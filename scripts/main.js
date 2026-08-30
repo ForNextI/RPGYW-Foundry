@@ -1,4 +1,5 @@
 import { MODULE_ID, registerSettings } from "./settings.js";
+import { ensureIntegratorWorldId } from "./world-id.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -9,6 +10,7 @@ Hooks.once("setup", () => {
   console.log(`${MODULE_ID} | setup`);
 });
 
-Hooks.once("ready", () => {
+Hooks.once("ready", async () => {
+  await ensureIntegratorWorldId();
   console.log(`${MODULE_ID} | ready`);
 });
