@@ -1,6 +1,7 @@
-const MODULE_ID = "rpg-your-way-integrator";
+import { MODULE_ID, registerSettings } from "./settings.js";
 
 Hooks.once("init", () => {
+  registerSettings();
   console.log(`${MODULE_ID} | init`);
 });
 
