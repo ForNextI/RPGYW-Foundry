@@ -220,3 +220,12 @@ export function initializeController() {
 
   if (isCurrentUserController()) {
     startHeartbeat();
+  }
+
+  return Object.freeze({
+    status: getControllerStatus,
+    canRunActions: canRunIntegratorActions,
+    claim: claimController,
+    release: releaseController,
+  });
+}
