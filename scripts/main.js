@@ -1,3 +1,4 @@
+import { initializeController } from "./controller.js";
 import { MODULE_ID, registerSettings } from "./settings.js";
 import { ensureIntegratorWorldId } from "./world-id.js";
 
@@ -12,5 +13,6 @@ Hooks.once("setup", () => {
 
 Hooks.once("ready", async () => {
   await ensureIntegratorWorldId();
+  initializeController();
   console.log(`${MODULE_ID} | ready`);
 });
