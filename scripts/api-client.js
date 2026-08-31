@@ -7,6 +7,7 @@ export const FOUNDRY_API_ROOT = (
 export const FOUNDRY_API_PATHS = Object.freeze({
   pairStart: "/pair/start",
   pairStatus: "/pair/status",
+  connection: "/connection",
   sessionOpen: "/session/open",
   sessionHeartbeat: "/session/heartbeat",
   sessionRoster: "/session/roster",
@@ -273,10 +274,21 @@ export function createIntegrationApiClient({
     );
   }
 
+  async function getConnection() {
+    return requestJson(
+      FOUNDRY_API_PATHS.connection,
+      {
+        method: "GET",
+        authenticated: true,
+      },
+    );
+  }
+
   return Object.freeze({
     requestJson,
     startPairing,
     getPairingStatus,
+    getConnection,
     getSessionGrant,
     setSessionGrant,
     clearSessionGrant,

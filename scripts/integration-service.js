@@ -156,6 +156,10 @@ export function createIntegrationService({
     });
   }
 
+  async function getConnection() {
+    return apiClient.getConnection();
+  }
+
   return Object.freeze({
     getStatus,
     subscribe,
@@ -165,6 +169,7 @@ export function createIntegrationService({
     stopPairingPolling,
     resetPairing,
     requestAuthenticated,
+    getConnection,
   });
 }
 
