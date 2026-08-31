@@ -14,9 +14,14 @@ import {
   refreshFoundryRoster,
   unmapCharacter,
 } from "./mapping-service.js";
+import {
+  sendAigmTurn,
+} from "./aigm-turn.js";
 
 const COMMAND = "/rpgyw";
 const COMMAND_KEY = "rpgyw";
+const AIGM_COMMAND = "/aigm";
+const AIGM_COMMAND_KEY = "aigm";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -34,6 +39,25 @@ async function privateMessage(content) {
     },
     content,
     whisper: [game.user.id],
+  });
+}
+
+function richText(value) {
+  const text = escapeHtml(value).trim();
+  if (!text) return "<p></p>";
+
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${paragraph.replaceAll("\n", "<br>")}</p>`)
+    .join("");
+}
+
+async function publicMessage(alias, content) {
+  return ChatMessage.create({
+    speaker: {
+      alias: String(alias || "RPG Your Way"),
+    },
+    content: richText(content),
   });
 }
 
@@ -390,7 +414,8 @@ async function unmap(service, selector) {
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 0.2.5</h3>
+      <h3>RPG Your Way Foundry Integrator 0.2.6</h3>
+      <p><strong>/aigm ACTION</strong> — send a live campaign turn to the RPG Your Way AIGM.</p>
       <p><strong>/rpgyw connect</strong> — GMs connect the world; Players use the same command as a shortcut to player linking.</p>
       <p><strong>/rpgyw link</strong> — link this Foundry user to your RPG Your Way account.</p>
       <p><strong>/rpgyw roster</strong> — show RPG Your Way players, character assignments, and Foundry Actor mappings.</p>
@@ -455,7 +480,38 @@ function registerFoundryChatCommand(service) {
     },
   };
 
-  console.log(`${MODULE_ID} | registered ${COMMAND} chat command`);
+  ChatLog.CHAT_COMMANDS[AIGM_COMMAND_KEY] = {
+    rgx: /^\/aigm(?:\s+([\s\S]+))?$/i,
+    fn: async (_command, match) => {
+      const input = Array.isArray(match) ? match[1] : "";
+
+      try {
+        const result = await sendAigmTurn(service, input || "");
+        await publicMessage(
+          result.playerDisplayName || game.user?.name || "Player",
+          result.input,
+        );
+        await publicMessage(
+          result.gameMasterName || "RPG Your Way",
+          result.message,
+        );
+
+        if (result.billing?.settlementWarning) {
+          ui.notifications.warn(
+            `RPG Your Way billing warning: ${result.billing.settlementWarning}`,
+          );
+        }
+      } catch (error) {
+        notifyError(error);
+      }
+
+      return false;
+    },
+  };
+
+  console.log(
+    `${MODULE_ID} | registered ${COMMAND} and ${AIGM_COMMAND} chat commands`,
+  );
 }
 
 export function initializeChatCommands(service) {

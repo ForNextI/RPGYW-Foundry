@@ -11,6 +11,7 @@ export const FOUNDRY_API_PATHS = Object.freeze({
   playerLinkStart: "/player-link/start",
   playerLinkStatus: "/player-link/status",
   playerLink: "/player-link",
+  aigmTurn: "/aigm-turn",
   sessionOpen: "/session/open",
   sessionHeartbeat: "/session/heartbeat",
   sessionRoster: "/session/roster",
@@ -139,6 +140,7 @@ export function createIntegrationApiClient({
       body = null,
       authenticated = false,
       query = null,
+      timeoutMs: requestTimeoutMs = timeoutMs,
     } = {},
   ) {
     const normalizedPath = requireNonEmptyString(path, "path");
@@ -180,10 +182,15 @@ export function createIntegrationApiClient({
       headers.set("Authorization", `Bearer ${sessionGrant}`);
     }
 
+    const effectiveTimeoutMs = (
+      Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0
+        ? requestTimeoutMs
+        : timeoutMs
+    );
     const abortController = new AbortController();
     const timeoutHandle = setTimeout(
       () => abortController.abort(),
-      timeoutMs,
+      effectiveTimeoutMs,
     );
 
     let response;
