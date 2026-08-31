@@ -37,7 +37,7 @@ Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) {
     moduleRecord.api = Object.freeze({
-      version: "0.2.0",
+      version: "0.2.1",
       integration: integrationService,
       commands: chatCommands,
       controller: Object.freeze({

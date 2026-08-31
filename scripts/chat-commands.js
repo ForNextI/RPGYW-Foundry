@@ -8,6 +8,7 @@ import {
 } from "./settings.js";
 
 const COMMAND = "/rpgyw";
+const COMMAND_KEY = "rpgyw";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -58,7 +59,7 @@ async function ensureLocalController() {
   }
 
   throw new Error(
-    "Another Foundry GM is configured as the RPG Your Way Integrator controller.",
+    "Another Foundry GM is configured as Integrator controller.",
   );
 }
 
@@ -97,7 +98,7 @@ async function announceConnected(service) {
     <div class="rpg-your-way-connected">
       <h3>RPG Your Way connected</h3>
       <p><strong>${escapeHtml(connection.worldLabel)}</strong> is linked to <strong>${escapeHtml(connection.campaignName)}</strong>.</p>
-      <p>Integrator 0.2.0 has completed the first live handshake. Gameplay state and AIGM commands come in later 0.2.x steps.</p>
+      <p>Integrator 0.2.1 has completed the first live handshake. Gameplay state and AIGM commands come in later 0.2.x steps.</p>
     </div>
   `);
 
@@ -171,13 +172,55 @@ async function reset(service) {
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 0.2.0</h3>
+      <h3>RPG Your Way Foundry Integrator 0.2.1</h3>
       <p><strong>/rpgyw connect</strong> — connect this Foundry world to an RPG Your Way campaign.</p>
       <p><strong>/rpgyw status</strong> — show the current connection.</p>
       <p><strong>/rpgyw reset</strong> — discard this browser's current connection grant.</p>
       <p><strong>/rpgyw help</strong> — show these commands.</p>
     </div>
   `);
+}
+
+async function runSubcommand(service, rawSubcommand = "help") {
+  const subcommand = String(rawSubcommand || "help")
+    .trim()
+    .split(/\s+/, 1)[0]
+    .toLowerCase();
+
+  if (subcommand === "connect") {
+    await connect(service);
+  } else if (subcommand === "status") {
+    await status(service);
+  } else if (subcommand === "reset") {
+    await reset(service);
+  } else {
+    await help();
+  }
+}
+
+function registerFoundryChatCommand(service) {
+  const ChatLog = foundry?.applications?.sidebar?.tabs?.ChatLog;
+
+  if (!ChatLog?.CHAT_COMMANDS) {
+    throw new Error("Foundry V14 ChatLog command registry is unavailable.");
+  }
+
+  ChatLog.CHAT_COMMANDS[COMMAND_KEY] = {
+    rgx: /^\/rpgyw(?:\s+(.*))?$/i,
+    fn: async (_command, match) => {
+      const rawSubcommand = Array.isArray(match) ? match[1] : "help";
+
+      try {
+        await runSubcommand(service, rawSubcommand || "help");
+      } catch (error) {
+        notifyError(error);
+      }
+
+      return false;
+    },
+  };
+
+  console.log(`${MODULE_ID} | registered ${COMMAND} chat command`);
 }
 
 export function initializeChatCommands(service) {
@@ -192,31 +235,7 @@ export function initializeChatCommands(service) {
     }
   });
 
-  Hooks.on("chatMessage", (_chatLog, message) => {
-    const trimmed = typeof message === "string" ? message.trim() : "";
-
-    if (
-      trimmed !== COMMAND
-      && !trimmed.toLowerCase().startsWith(`${COMMAND} `)
-    ) {
-      return;
-    }
-
-    const [, rawSubcommand = "help"] = trimmed.split(/\s+/, 2);
-    const subcommand = rawSubcommand.toLowerCase();
-
-    if (subcommand === "connect") {
-      void connect(service).catch(notifyError);
-    } else if (subcommand === "status") {
-      void status(service).catch(notifyError);
-    } else if (subcommand === "reset") {
-      void reset(service).catch(notifyError);
-    } else {
-      void help().catch(notifyError);
-    }
-
-    return false;
-  });
+  registerFoundryChatCommand(service);
 
   return Object.freeze({
     connect: () => connect(service),
