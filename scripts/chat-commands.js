@@ -6,6 +6,9 @@ import {
   MODULE_ID,
   SETTING_KEYS,
 } from "./settings.js";
+import {
+  runGmActionProbe,
+} from "./gm-action-probe.js";
 
 const COMMAND = "/rpgyw";
 const COMMAND_KEY = "rpgyw";
@@ -282,12 +285,25 @@ async function reset(service) {
   `);
 }
 
+async function probe(service) {
+  const probeResult = await runGmActionProbe(service);
+
+  await privateMessage(`
+    <div class="rpg-your-way-status">
+      <h3>RPG Your Way action probe complete</h3>
+      <p><strong>${escapeHtml(probeResult.tokenName)}</strong> moved to <strong>${escapeHtml(probeResult.result.x)}, ${escapeHtml(probeResult.result.y)}</strong>.</p>
+      <p>The command came from RPG Your Way and was executed by the active Integrator controller.</p>
+    </div>
+  `);
+}
+
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 0.2.3</h3>
+      <h3>RPG Your Way Foundry Integrator 0.2.4</h3>
       <p><strong>/rpgyw connect</strong> — GMs connect the world; Players use the same command as a shortcut to player linking.</p>
       <p><strong>/rpgyw link</strong> — link this Foundry user to your RPG Your Way account.</p>
+      <p><strong>/rpgyw probe</strong> — with exactly one token selected, run the 0.2.4 server-to-Foundry movement probe.</p>
       <p><strong>/rpgyw status</strong> — show world connection and player-account status separately.</p>
       <p><strong>/rpgyw reset</strong> — discard the current browser's applicable local grant.</p>
       <p><strong>/rpgyw help</strong> — show these commands.</p>
@@ -305,6 +321,8 @@ async function runSubcommand(service, rawSubcommand = "help") {
     await connect(service);
   } else if (subcommand === "link") {
     await linkPlayer(service);
+  } else if (subcommand === "probe") {
+    await probe(service);
   } else if (subcommand === "status") {
     await status(service);
   } else if (subcommand === "reset") {
