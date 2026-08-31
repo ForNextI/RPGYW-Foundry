@@ -9,6 +9,11 @@ import {
 import {
   runGmActionProbe,
 } from "./gm-action-probe.js";
+import {
+  mapSelectedActorToCharacter,
+  refreshFoundryRoster,
+  unmapCharacter,
+} from "./mapping-service.js";
 
 const COMMAND = "/rpgyw";
 const COMMAND_KEY = "rpgyw";
@@ -297,13 +302,101 @@ async function probe(service) {
   `);
 }
 
+function rosterCharacterRow(character, index, participantsById) {
+  const actor = character.foundryActorId
+    ? game.actors.get(character.foundryActorId)
+    : null;
+
+  const actorLabel = character.foundryActorId
+    ? (
+      actor?.name
+        ? escapeHtml(actor.name)
+        : `Missing Actor ${escapeHtml(character.foundryActorId)}`
+    )
+    : "Not mapped";
+
+  const controllers = character.controllerParticipantIds.map(
+    (participantId) => participantsById.get(participantId),
+  ).filter(Boolean);
+
+  const controllerLabel = controllers.length
+    ? controllers.map((participant) => {
+      const foundryName = participant.foundryUserId
+        ? game.users.get(participant.foundryUserId)?.name
+        : null;
+
+      return foundryName
+        ? `${escapeHtml(participant.displayName)} → ${escapeHtml(foundryName)}`
+        : `${escapeHtml(participant.displayName)} → Foundry user not uniquely linked`;
+    }).join(", ")
+    : "No RPG Your Way player assigned";
+
+  return `
+    <li>
+      <strong>${index + 1}. ${escapeHtml(character.displayName)}</strong>
+      — ${actorLabel}<br>
+      <small>${controllerLabel}</small>
+    </li>
+  `;
+}
+
+async function roster(service) {
+  const current = await refreshFoundryRoster(service);
+  const participantsById = new Map(
+    current.participants.map(
+      (participant) => [participant.participantId, participant],
+    ),
+  );
+
+  const rows = current.characters.map(
+    (character, index) => (
+      rosterCharacterRow(character, index, participantsById)
+    ),
+  ).join("");
+
+  await privateMessage(`
+    <div class="rpg-your-way-status">
+      <h3>RPG Your Way character map</h3>
+      <ol>${rows}</ol>
+      <p>Select one Foundry token, then use <strong>/rpgyw map NUMBER</strong>.</p>
+    </div>
+  `);
+
+  return current;
+}
+
+async function mapCharacter(service, selector) {
+  const result = await mapSelectedActorToCharacter(service, selector);
+
+  await privateMessage(`
+    <div class="rpg-your-way-status">
+      <h3>RPG Your Way character mapped</h3>
+      <p><strong>${escapeHtml(result.character?.displayName || selector)}</strong> is mapped to Foundry Actor <strong>${escapeHtml(result.actorName)}</strong>.</p>
+    </div>
+  `);
+}
+
+async function unmap(service, selector) {
+  await unmapCharacter(service, selector);
+
+  await privateMessage(`
+    <div class="rpg-your-way-status">
+      <h3>RPG Your Way character mapping removed</h3>
+      <p>The selected RPG Your Way character is no longer mapped to a Foundry Actor.</p>
+    </div>
+  `);
+}
+
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 0.2.4</h3>
+      <h3>RPG Your Way Foundry Integrator 0.2.5</h3>
       <p><strong>/rpgyw connect</strong> — GMs connect the world; Players use the same command as a shortcut to player linking.</p>
       <p><strong>/rpgyw link</strong> — link this Foundry user to your RPG Your Way account.</p>
-      <p><strong>/rpgyw probe</strong> — with exactly one token selected, run the 0.2.4 server-to-Foundry movement probe.</p>
+      <p><strong>/rpgyw roster</strong> — show RPG Your Way players, character assignments, and Foundry Actor mappings.</p>
+      <p><strong>/rpgyw map NUMBER</strong> — map the selected Foundry token's Actor to a character from the roster.</p>
+      <p><strong>/rpgyw unmap NUMBER</strong> — remove one character-to-Actor mapping.</p>
+      <p><strong>/rpgyw probe</strong> — with exactly one token selected, run the server-to-Foundry movement probe.</p>
       <p><strong>/rpgyw status</strong> — show world connection and player-account status separately.</p>
       <p><strong>/rpgyw reset</strong> — discard the current browser's applicable local grant.</p>
       <p><strong>/rpgyw help</strong> — show these commands.</p>
@@ -312,15 +405,23 @@ async function help() {
 }
 
 async function runSubcommand(service, rawSubcommand = "help") {
-  const subcommand = String(rawSubcommand || "help")
+  const parts = String(rawSubcommand || "help")
     .trim()
-    .split(/\s+/, 1)[0]
-    .toLowerCase();
+    .split(/\s+/)
+    .filter(Boolean);
+  const subcommand = (parts.shift() || "help").toLowerCase();
+  const argument = parts.join(" ");
 
   if (subcommand === "connect") {
     await connect(service);
   } else if (subcommand === "link") {
     await linkPlayer(service);
+  } else if (subcommand === "roster") {
+    await roster(service);
+  } else if (subcommand === "map") {
+    await mapCharacter(service, argument);
+  } else if (subcommand === "unmap") {
+    await unmap(service, argument);
   } else if (subcommand === "probe") {
     await probe(service);
   } else if (subcommand === "status") {
@@ -382,6 +483,10 @@ export function initializeChatCommands(service) {
   return Object.freeze({
     connect: () => connect(service),
     link: () => linkPlayer(service),
+    roster: () => roster(service),
+    map: (selector) => mapCharacter(service, selector),
+    unmap: (selector) => unmap(service, selector),
+    probe: () => probe(service),
     status: () => status(service),
     reset: () => reset(service),
     help,

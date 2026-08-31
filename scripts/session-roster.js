@@ -1,6 +1,6 @@
 export const SESSION_ROSTER_PROTOCOL_VERSION = 1;
 
-const ATTENDANCE_STATES = new Set(["present", "absent"]);
+const ATTENDANCE_STATES = new Set(["unknown", "present", "absent"]);
 
 const SNAPSHOT_KEYS = new Set([
   "version",
@@ -81,7 +81,7 @@ function normalizeParticipant(participant, index) {
 
   if (!ATTENDANCE_STATES.has(participant.attendance)) {
     throw new TypeError(
-      `${label}.attendance must be "present" or "absent".`,
+      `${label}.attendance must be "unknown", "present", or "absent".`,
     );
   }
 

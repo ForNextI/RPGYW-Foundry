@@ -11,6 +11,9 @@ import {
   initializeIntegrationService,
 } from "./integration-service.js";
 import {
+  initializeFoundryStateSync,
+} from "./state-sync.js";
+import {
   MODULE_ID,
   registerSettings,
 } from "./settings.js";
@@ -33,11 +36,12 @@ Hooks.once("ready", async () => {
   initializeController();
   const integrationService = initializeIntegrationService();
   const chatCommands = initializeChatCommands(integrationService);
+  initializeFoundryStateSync(integrationService);
 
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) {
     moduleRecord.api = Object.freeze({
-      version: "0.2.4",
+      version: "0.2.5",
       integration: integrationService,
       commands: chatCommands,
       controller: Object.freeze({
