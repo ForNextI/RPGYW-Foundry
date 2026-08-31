@@ -98,7 +98,7 @@ async function announceConnected(service) {
     <div class="rpg-your-way-connected">
       <h3>RPG Your Way connected</h3>
       <p><strong>${escapeHtml(connection.worldLabel)}</strong> is linked to <strong>${escapeHtml(connection.campaignName)}</strong>.</p>
-      <p>Integrator 0.2.1 has completed the first live handshake. Gameplay state and AIGM commands come in later 0.2.x steps.</p>
+      <p>Integrator 0.2.2 has completed the first live handshake. Gameplay state and AIGM commands come in later 0.2.x steps.</p>
     </div>
   `);
 
@@ -172,7 +172,7 @@ async function reset(service) {
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 0.2.1</h3>
+      <h3>RPG Your Way Foundry Integrator 0.2.2</h3>
       <p><strong>/rpgyw connect</strong> — connect this Foundry world to an RPG Your Way campaign.</p>
       <p><strong>/rpgyw status</strong> — show the current connection.</p>
       <p><strong>/rpgyw reset</strong> — discard this browser's current connection grant.</p>

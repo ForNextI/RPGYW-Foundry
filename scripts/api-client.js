@@ -1,4 +1,4 @@
-export const RPGYW_API_ORIGIN = "https://rpgyourway.com";
+export const RPGYW_API_ORIGIN = "https://www.rpgyourway.com";
 
 export const FOUNDRY_API_ROOT = (
   `${RPGYW_API_ORIGIN}/api/integrations/foundry`
