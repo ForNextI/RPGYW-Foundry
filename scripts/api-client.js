@@ -8,6 +8,9 @@ export const FOUNDRY_API_PATHS = Object.freeze({
   pairStart: "/pair/start",
   pairStatus: "/pair/status",
   connection: "/connection",
+  playerLinkStart: "/player-link/start",
+  playerLinkStatus: "/player-link/status",
+  playerLink: "/player-link",
   sessionOpen: "/session/open",
   sessionHeartbeat: "/session/heartbeat",
   sessionRoster: "/session/roster",
@@ -284,11 +287,62 @@ export function createIntegrationApiClient({
     );
   }
 
+  async function startPlayerLink({
+    integratorWorldId,
+    foundryUserId,
+    foundryUserName = null,
+    foundryWorldLabel = null,
+  }) {
+    return requestJson(
+      FOUNDRY_API_PATHS.playerLinkStart,
+      {
+        method: "POST",
+        body: {
+          integratorWorldId: requireNonEmptyString(
+            integratorWorldId,
+            "integratorWorldId",
+          ),
+          foundryUserId: requireNonEmptyString(
+            foundryUserId,
+            "foundryUserId",
+          ),
+          foundryUserName,
+          foundryWorldLabel,
+        },
+      },
+    );
+  }
+
+  async function getPlayerLinkStatus(pairId) {
+    return requestJson(
+      FOUNDRY_API_PATHS.playerLinkStatus,
+      {
+        method: "GET",
+        query: {
+          pairId: requireNonEmptyString(pairId, "pairId"),
+        },
+      },
+    );
+  }
+
+  async function getPlayerLink() {
+    return requestJson(
+      FOUNDRY_API_PATHS.playerLink,
+      {
+        method: "GET",
+        authenticated: true,
+      },
+    );
+  }
+
   return Object.freeze({
     requestJson,
     startPairing,
     getPairingStatus,
     getConnection,
+    startPlayerLink,
+    getPlayerLinkStatus,
+    getPlayerLink,
     getSessionGrant,
     setSessionGrant,
     clearSessionGrant,

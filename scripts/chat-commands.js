@@ -46,6 +46,29 @@ function notifyError(error) {
   console.error(`${MODULE_ID} |`, error);
 }
 
+function worldIsConnected() {
+  return Boolean(
+    game.settings.get(
+      MODULE_ID,
+      SETTING_KEYS.integratorEnabled,
+    ),
+  );
+}
+
+function linkedCampaignName() {
+  return game.settings.get(
+    MODULE_ID,
+    SETTING_KEYS.linkedCampaignName,
+  ) || "";
+}
+
+function linkedPlayerReference() {
+  return game.settings.get(
+    MODULE_ID,
+    SETTING_KEYS.linkedPlayerReference,
+  ) || "";
+}
+
 async function ensureLocalController() {
   const status = getControllerStatus();
 
@@ -63,7 +86,7 @@ async function ensureLocalController() {
   );
 }
 
-async function showPairingCard(pairing) {
+async function showWorldPairingCard(pairing) {
   const code = escapeHtml(pairing.userCode);
   const url = escapeHtml(pairing.verificationUrl);
 
@@ -73,6 +96,20 @@ async function showPairingCard(pairing) {
       <p>Your one-time connection code is <strong>${code}</strong>.</p>
       <p><a href="${url}" target="_blank" rel="noopener noreferrer">Open RPG Your Way and approve this Foundry world</a></p>
       <p>This code expires shortly. The approval page will ask which cloud campaign this Foundry world should represent.</p>
+    </div>
+  `);
+}
+
+async function showPlayerLinkCard(pairing) {
+  const code = escapeHtml(pairing.userCode);
+  const url = escapeHtml(pairing.verificationUrl);
+
+  await privateMessage(`
+    <div class="rpg-your-way-pairing">
+      <h3>Link your RPG Your Way account</h3>
+      <p>Your one-time player-link code is <strong>${code}</strong>.</p>
+      <p><a href="${url}" target="_blank" rel="noopener noreferrer">Open RPG Your Way and approve this Foundry player</a></p>
+      <p>This links your Foundry user to your RPG Your Way account. It does not give you GM or controller authority.</p>
     </div>
   `);
 }
@@ -88,8 +125,14 @@ async function announceConnected(service) {
 
   await game.settings.set(
     MODULE_ID,
-    SETTING_KEYS.linkedRpgYourWayReference,
+    SETTING_KEYS.linkedCampaignReference,
     connection.campaignId,
+  );
+
+  await game.settings.set(
+    MODULE_ID,
+    SETTING_KEYS.linkedCampaignName,
+    connection.campaignName,
   );
 
   notifyInfo(`Connected to RPG Your Way: ${connection.campaignName}`);
@@ -98,73 +141,143 @@ async function announceConnected(service) {
     <div class="rpg-your-way-connected">
       <h3>RPG Your Way connected</h3>
       <p><strong>${escapeHtml(connection.worldLabel)}</strong> is linked to <strong>${escapeHtml(connection.campaignName)}</strong>.</p>
-      <p>Integrator 0.2.2 has completed the first live handshake. Gameplay state and AIGM commands come in later 0.2.x steps.</p>
+      <p>The world connection belongs to the Integrator controller. Individual players link their own accounts separately.</p>
     </div>
   `);
 
   return connection;
 }
 
+async function announcePlayerLinked(service) {
+  const playerLink = await service.getPlayerLink();
+
+  await game.settings.set(
+    MODULE_ID,
+    SETTING_KEYS.linkedPlayerReference,
+    playerLink.linkId,
+  );
+
+  notifyInfo(`RPG Your Way account linked: ${playerLink.campaignName}`);
+
+  await privateMessage(`
+    <div class="rpg-your-way-connected">
+      <h3>RPG Your Way player linked</h3>
+      <p><strong>${escapeHtml(playerLink.foundryUserName)}</strong> is linked to your RPG Your Way account for <strong>${escapeHtml(playerLink.campaignName)}</strong>.</p>
+      <p>This player link is separate from Foundry GM/controller authority and from character ownership.</p>
+    </div>
+  `);
+
+  return playerLink;
+}
+
+async function linkPlayer(service) {
+  if (!worldIsConnected()) {
+    throw new Error(
+      "This Foundry world must be connected to RPG Your Way before players can link accounts.",
+    );
+  }
+
+  const pairing = await service.beginPlayerLink();
+  await showPlayerLinkCard(pairing);
+  notifyInfo(`RPG Your Way player-link code: ${pairing.userCode}`);
+}
+
 async function connect(service) {
   if (!game.user?.isGM) {
-    throw new Error("Only a Foundry GM can connect the world to RPG Your Way.");
+    await linkPlayer(service);
+    return;
   }
 
   await ensureLocalController();
 
   const pairing = await service.beginPairing();
-  await showPairingCard(pairing);
+  await showWorldPairingCard(pairing);
   notifyInfo(`RPG Your Way connection code: ${pairing.userCode}`);
 }
 
 async function status(service) {
   const current = service.getStatus();
+  const worldConnected = worldIsConnected();
+  let campaignName = linkedCampaignName();
+  let playerLink = null;
 
-  if (current.paired) {
-    const connection = await service.getConnection();
-    await privateMessage(`
-      <div class="rpg-your-way-status">
-        <h3>RPG Your Way status</h3>
-        <p><strong>Connected</strong> to ${escapeHtml(connection.campaignName)}.</p>
-        <p>Foundry world: ${escapeHtml(connection.worldLabel)}</p>
-        <p>Campaign revision: ${escapeHtml(connection.campaignRevision)}</p>
-      </div>
-    `);
-    return;
+  if (current.playerLink.paired) {
+    playerLink = await service.getPlayerLink();
+    campaignName = campaignName || playerLink.campaignName;
   }
 
-  if (current.pairing.state === "awaiting-approval") {
-    await showPairingCard(current.pairing);
-    return;
+  const worldStatus = worldConnected
+    ? (
+      campaignName
+        ? `Connected to <strong>${escapeHtml(campaignName)}</strong>.`
+        : "Connected."
+    )
+    : "Not connected.";
+
+  let accountStatus = "Not linked.";
+
+  if (current.playerLink.pairing.state === "awaiting-approval") {
+    accountStatus = "Waiting for approval.";
+  } else if (current.playerLink.paired && playerLink) {
+    accountStatus = `Linked to <strong>${escapeHtml(playerLink.campaignName)}</strong> with an active browser session.`;
+  } else if (linkedPlayerReference()) {
+    accountStatus = "Linked. This browser needs a fresh player session; use <strong>/rpgyw link</strong>.";
   }
 
   await privateMessage(`
     <div class="rpg-your-way-status">
       <h3>RPG Your Way status</h3>
-      <p>Not currently connected. Type <strong>/rpgyw connect</strong> to begin.</p>
+      <p>World: <strong>${worldStatus}</strong></p>
+      <p>Your account: <strong>${accountStatus}</strong></p>
+      ${!worldConnected && game.user?.isGM ? '<p>Use <strong>/rpgyw connect</strong> to connect the world.</p>' : ""}
+      ${worldConnected && !current.playerLink.paired && !linkedPlayerReference() ? '<p>Use <strong>/rpgyw link</strong> to link this Foundry user to your RPG Your Way account.</p>' : ""}
     </div>
   `);
 }
 
 async function reset(service) {
-  service.resetPairing();
+  if (game.user?.isGM) {
+    service.resetPairing();
+
+    await game.settings.set(
+      MODULE_ID,
+      SETTING_KEYS.integratorEnabled,
+      false,
+    );
+
+    await game.settings.set(
+      MODULE_ID,
+      SETTING_KEYS.linkedCampaignReference,
+      "",
+    );
+
+    await game.settings.set(
+      MODULE_ID,
+      SETTING_KEYS.linkedCampaignName,
+      "",
+    );
+
+    await privateMessage(`
+      <div class="rpg-your-way-status">
+        <h3>RPG Your Way local world connection reset</h3>
+        <p>This browser discarded its controller session grant and marked the local world connection inactive. Use <strong>/rpgyw connect</strong> to pair again.</p>
+      </div>
+    `);
+    return;
+  }
+
+  service.resetPlayerLink();
 
   await game.settings.set(
     MODULE_ID,
-    SETTING_KEYS.integratorEnabled,
-    false,
-  );
-
-  await game.settings.set(
-    MODULE_ID,
-    SETTING_KEYS.linkedRpgYourWayReference,
+    SETTING_KEYS.linkedPlayerReference,
     "",
   );
 
   await privateMessage(`
     <div class="rpg-your-way-status">
-      <h3>RPG Your Way local connection reset</h3>
-      <p>This browser has discarded its current RPG Your Way session grant. Type <strong>/rpgyw connect</strong> to pair again.</p>
+      <h3>RPG Your Way local player link reset</h3>
+      <p>This browser discarded its player session grant. Use <strong>/rpgyw link</strong> to link again.</p>
     </div>
   `);
 }
@@ -172,10 +285,11 @@ async function reset(service) {
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 0.2.2</h3>
-      <p><strong>/rpgyw connect</strong> — connect this Foundry world to an RPG Your Way campaign.</p>
-      <p><strong>/rpgyw status</strong> — show the current connection.</p>
-      <p><strong>/rpgyw reset</strong> — discard this browser's current connection grant.</p>
+      <h3>RPG Your Way Foundry Integrator 0.2.3</h3>
+      <p><strong>/rpgyw connect</strong> — GMs connect the world; Players use the same command as a shortcut to player linking.</p>
+      <p><strong>/rpgyw link</strong> — link this Foundry user to your RPG Your Way account.</p>
+      <p><strong>/rpgyw status</strong> — show world connection and player-account status separately.</p>
+      <p><strong>/rpgyw reset</strong> — discard the current browser's applicable local grant.</p>
       <p><strong>/rpgyw help</strong> — show these commands.</p>
     </div>
   `);
@@ -189,6 +303,8 @@ async function runSubcommand(service, rawSubcommand = "help") {
 
   if (subcommand === "connect") {
     await connect(service);
+  } else if (subcommand === "link") {
+    await linkPlayer(service);
   } else if (subcommand === "status") {
     await status(service);
   } else if (subcommand === "reset") {
@@ -224,14 +340,22 @@ function registerFoundryChatCommand(service) {
 }
 
 export function initializeChatCommands(service) {
-  let announcedPairedState = false;
+  let announcedWorldPair = false;
+  let announcedPlayerLink = false;
 
   service.subscribe((current) => {
-    if (current.paired && !announcedPairedState) {
-      announcedPairedState = true;
+    if (current.paired && !announcedWorldPair) {
+      announcedWorldPair = true;
       void announceConnected(service).catch(notifyError);
     } else if (!current.paired) {
-      announcedPairedState = false;
+      announcedWorldPair = false;
+    }
+
+    if (current.playerLink.paired && !announcedPlayerLink) {
+      announcedPlayerLink = true;
+      void announcePlayerLinked(service).catch(notifyError);
+    } else if (!current.playerLink.paired) {
+      announcedPlayerLink = false;
     }
   });
 
@@ -239,6 +363,7 @@ export function initializeChatCommands(service) {
 
   return Object.freeze({
     connect: () => connect(service),
+    link: () => linkPlayer(service),
     status: () => status(service),
     reset: () => reset(service),
     help,

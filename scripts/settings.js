@@ -4,12 +4,15 @@ export const SETTING_KEYS = Object.freeze({
   integratorEnabled: "integratorEnabled",
   integratorWorldId: "integratorWorldId",
   controllerUserId: "controllerUserId",
+  linkedCampaignReference: "linkedCampaignReference",
+  linkedCampaignName: "linkedCampaignName",
   supportedAdapter: "supportedAdapter",
   assetSelectionMode: "assetSelectionMode",
   allowAIGMSceneChanges: "allowAIGMSceneChanges",
   allowAIGMTokenMovement: "allowAIGMTokenMovement",
   allowAIGMCombatAutomation: "allowAIGMCombatAutomation",
   linkedRpgYourWayReference: "linkedRpgYourWayReference",
+  linkedPlayerReference: "linkedPlayerReference",
   defaultCharacterActorId: "defaultCharacterActorId",
   showIntegratorNotifications: "showIntegratorNotifications",
 });
@@ -36,6 +39,8 @@ export function registerSettings() {
   registerWorldSetting(SETTING_KEYS.integratorEnabled, Boolean, false);
   registerWorldSetting(SETTING_KEYS.integratorWorldId, String, "");
   registerWorldSetting(SETTING_KEYS.controllerUserId, String, "");
+  registerWorldSetting(SETTING_KEYS.linkedCampaignReference, String, "");
+  registerWorldSetting(SETTING_KEYS.linkedCampaignName, String, "");
   registerWorldSetting(SETTING_KEYS.supportedAdapter, String, "dnd5e");
   registerWorldSetting(SETTING_KEYS.assetSelectionMode, String, "eligible-only");
 
@@ -44,6 +49,7 @@ export function registerSettings() {
   registerWorldSetting(SETTING_KEYS.allowAIGMCombatAutomation, Boolean, false);
 
   registerUserSetting(SETTING_KEYS.linkedRpgYourWayReference, String, "");
+  registerUserSetting(SETTING_KEYS.linkedPlayerReference, String, "");
   registerUserSetting(SETTING_KEYS.defaultCharacterActorId, String, "");
   registerUserSetting(SETTING_KEYS.showIntegratorNotifications, Boolean, true);
 }
