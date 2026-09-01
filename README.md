@@ -1,26 +1,21 @@
 # RPG Your Way Foundry Integrator
 
-Current release: **2.8.1**
+Current release: **2.9.0**
 
 The RPG Your Way Foundry Integrator connects a Foundry VTT world to an RPG Your Way cloud campaign. RPG Your Way remains the text-play surface, AIGM, campaign-memory, character/rules, multiplayer, and billing authority. Foundry provides the visual tabletop when the campaign needs one.
 
-## 2.8.0 combat handoff
+## 2.9.0 tactical combat pass
 
-2.8.0 adds the first RPG Your Way → Foundry combat handoff.
+2.9.0 turns the first 2.8 battlefield handoff into a more complete Foundry combat surface.
 
-When an RPG Your Way combat has party and NPC initiative, the player can choose VTT. The connected Foundry controller receives a compact structured encounter request and prepares a tactical Scene.
+- The Integrator creates a Foundry Combat encounter, adds the RPG Your Way-created tokens as Combatants, applies the initiative values already rolled in RPG Your Way, and starts round 1.
+- RPG Your Way-created fallback Scenes disable token-dependent Scene vision and use bright global illumination so an empty test World is immediately usable.
+- The Integrator makes a bounded, cached, local-only search through installed Foundry module image paths for plausible maps and token art. RPG Your Way narration and character visual tags provide search terms; no installed asset library is uploaded to RPG Your Way or to the AIGM.
+- Existing World Actors can still donate artwork only. Their rules data is never adopted by RPG Your Way-managed Actors.
+- If no local visual scores well enough, the reliable gray grid and monogram tokens remain the fallback.
+- The cross-site navigation controls now use a focus handshake first. If the matching RPG Your Way or Foundry tab is already alive, the button focuses that browsing context instead of navigating and reloading it.
 
-The first renderer deliberately favors reliability:
-
-- It creates or reuses RPG Your Way-managed PC Actors rather than borrowing another Actor's class, level, spells, inventory, or other character data.
-- A previously mapped local Actor may donate only its token or portrait image.
-- PC hit points come from RPG Your Way.
-- Token names are always visible and PC hit-point bars appear on hover.
-- If no suitable local image exists, a local three-character monogram token is used, such as `FIG`, `WIZ`, `CLE`, or `ROG`.
-- A suitable Scene already in the World may donate only its background image and basic grid dimensions. Walls, journals, lights, tokens, and other Scene content are not copied.
-- No local artwork, compendium, adventure, journal, or map library is uploaded to the AIGM.
-
-The Foundry **Go to RPG Your Way** control and RPG Your Way **Go to VTT** control are navigation only. They do not start or end combat, advance a turn, change billing, or mutate character state.
+`/aigm ACTION` remains an intentional in-Foundry path for sending a turn to the RPG Your Way AIGM when a player wants to stay on the VTT surface.
 
 ## Install from the internet
 
@@ -44,11 +39,11 @@ Foundry can use the same manifest URL to discover future releases.
 
 The GitHub repository is development source. A tagged release is the distributable Foundry package.
 
-For release `2.8.1`:
+For release `2.9.0`:
 
-`git tag v2.8.1`
+`git tag v2.9.0`
 
-`git push origin v2.8.1`
+`git push origin v2.9.0`
 
 The GitHub Actions release workflow validates the manifest and JavaScript, builds `rpg-your-way-integrator.zip`, and publishes both the ZIP and `module.json` to the GitHub Release.
 
@@ -63,7 +58,7 @@ The GitHub Actions release workflow validates the manifest and JavaScript, build
 - `/rpgyw status`
 - `/rpgyw reset`
 - `/rpgyw help`
-- `/aigm ACTION` (development test path only; normal gameplay remains on RPG Your Way)
+- `/aigm ACTION`
 
 ## Authority boundary
 
@@ -71,4 +66,4 @@ RPG Your Way is authoritative for character records, game rules, campaign contin
 
 Foundry is the visual and tactical tabletop. The Integrator exchanges only tightly scoped structured state and validated commands with RPG Your Way.
 
-The Integrator does not upload a user's purchased Foundry maps, token artwork, commercial compendia, installed adventures, journals, or other third-party content to the AIGM. 2.8.0 may resolve explicitly limited visual fields locally inside the user's own Foundry World.
+Local module assets are searched and selected only inside the user's Foundry session. The Integrator does not upload purchased maps, token artwork, commercial compendia, installed adventures, journals, or other third-party libraries to RPG Your Way or the AIGM.

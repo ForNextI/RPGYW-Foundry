@@ -11,6 +11,17 @@ import {
 import {
   MODULE_ID,
 } from "./settings.js";
+import {
+  createManagedCombat,
+} from "./combat-tracker.js";
+import {
+  focusOrOpenRpgYourWay,
+  installFoundryFocusBridge,
+} from "./focus-navigation.js";
+import {
+  resolveLocalMapImage,
+  resolveLocalTokenImage,
+} from "./local-assets.js";
 
 const POLL_INTERVAL_MS = 2_500;
 const NAV_BUTTON_ID = "rpgyw-go-to-web";
@@ -97,21 +108,8 @@ function currentFoundryLaunchUrl() {
   }
 }
 
-function openRpgYourWay() {
-  const target = window.open(
-    `${RPGYW_API_ORIGIN}/play`,
-    "rpgyw-play",
-  );
-
-  try {
-    target?.focus();
-  } catch {
-    // Browser focus is best-effort.
-  }
-}
-
 function ensureReturnButton() {
-  window.name = "rpgyw-foundry-vtt";
+  installFoundryFocusBridge();
 
   const existing = document.getElementById(NAV_BUTTON_ID);
   if (existing) {
@@ -136,7 +134,10 @@ function ensureReturnButton() {
   button.style.fontWeight = "700";
   button.style.cursor = "pointer";
   button.style.boxShadow = "0 3px 14px rgba(0,0,0,0.35)";
-  button.addEventListener("click", openRpgYourWay);
+  button.addEventListener(
+    "click",
+    () => void focusOrOpenRpgYourWay(),
+  );
   document.body.append(button);
   return button;
 }
@@ -283,12 +284,25 @@ function oldMappedDonor(character, proxyActor) {
   return actorId ? game.actors.get(actorId) : null;
 }
 
-async function ensurePlayerActor(character, encounterCharacter, roster) {
+async function ensurePlayerActor(
+  character,
+  encounterCharacter,
+  roster,
+  sceneSummary,
+) {
   let actor = findPlayerProxy(character.campaignCharacterId);
   const donor = oldMappedDonor(character, actor);
   const donorVisual = actorVisual(donor);
+  const localTokenSrc = donorVisual.tokenSrc
+    ? null
+    : await resolveLocalTokenImage({
+      name: encounterCharacter.displayName,
+      visualTags: encounterCharacter.visualTags ?? [],
+      sceneSummary,
+    });
   const tokenSrc = (
     donorVisual.tokenSrc
+      || localTokenSrc
       || monogramDataUri(characterMonogram(encounterCharacter.displayName))
   );
   const actorImg = donorVisual.actorImg || FALLBACK_ACTOR_IMAGE;
@@ -414,7 +428,11 @@ async function deleteManagedEnemyActors() {
   }
 }
 
-async function createEnemyActors(encounterId, enemies) {
+async function createEnemyActors(
+  encounterId,
+  enemies,
+  sceneSummary,
+) {
   const nameCounts = new Map();
 
   for (const enemy of enemies) {
@@ -437,7 +455,17 @@ async function createEnemyActors(encounterId, enemies) {
       ordinal,
       nameCounts.get(key) ?? 1,
     );
-    const tokenSrc = visual.tokenSrc || monogramDataUri(monogram);
+    const localTokenSrc = visual.tokenSrc
+      ? null
+      : await resolveLocalTokenImage({
+        name: enemy.displayName,
+        sceneSummary,
+      });
+    const tokenSrc = (
+      visual.tokenSrc
+        || localTokenSrc
+        || monogramDataUri(monogram)
+    );
     const actorImg = visual.actorImg || FALLBACK_ACTOR_IMAGE;
 
     let actor;
@@ -592,12 +620,15 @@ async function ensureManagedScene(encounter) {
   ) ?? null;
 
   const donor = findLocalSceneDonor(sceneSpec, scene?.id ?? null);
+  const localMap = donor
+    ? null
+    : await resolveLocalMapImage(sceneSpec);
   const width = donor
     ? safeSceneNumber(donor.width, 2400, 800, 12000)
-    : 2400;
+    : safeSceneNumber(localMap?.width, 2400, 800, 12000);
   const height = donor
     ? safeSceneNumber(donor.height, 1600, 800, 12000)
-    : 1600;
+    : safeSceneNumber(localMap?.height, 1600, 800, 12000);
   const gridSize = donor
     ? safeSceneNumber(donor.grid?.size, 100, 40, 300)
     : 100;
@@ -611,8 +642,21 @@ async function ensureManagedScene(encounter) {
     height,
     padding: 0.05,
     navigation: true,
+    tokenVision: false,
+    environment: {
+      darknessLevel: 0,
+      darknessLevelLock: true,
+      globalLight: {
+        enabled: CONST?.LIGHTING_LEVELS?.BRIGHT ?? 2,
+        bright: true,
+      },
+    },
     background: {
-      src: donor ? safeImageSource(donor.background?.src) : null,
+      src: (
+        donor
+          ? safeImageSource(donor.background?.src)
+          : localMap?.src ?? null
+      ),
     },
     grid: {
       type: squareGridType(),
@@ -625,6 +669,7 @@ async function ensureManagedScene(encounter) {
         [MANAGED_SCENE_FLAG]: true,
         [SOURCE_ENCOUNTER_FLAG]: encounter.id,
         localBackgroundSourceSceneId: donor?.id ?? null,
+        localBackgroundAsset: localMap?.src ?? null,
       },
     },
   };
@@ -719,6 +764,10 @@ function sceneTokenData(
     bar2: {
       attribute: null,
     },
+    sight: {
+      enabled: false,
+      range: null,
+    },
     texture: {
       src: textureSrc,
     },
@@ -798,7 +847,12 @@ async function mapPlayerActor(
   );
 }
 
-async function buildPlayerActors(service, encounter, roster) {
+async function buildPlayerActors(
+  service,
+  encounter,
+  roster,
+  sceneSummary,
+) {
   const partyById = new Map(
     encounter.payload.party.map(
       (character) => [character.campaignCharacterId, character],
@@ -819,6 +873,7 @@ async function buildPlayerActors(service, encounter, roster) {
       character,
       encounterCharacter,
       roster,
+      sceneSummary,
     );
 
     await mapPlayerActor(
@@ -849,7 +904,7 @@ async function createSceneTokens(
   const gridSize = cleanNumber(scene.grid?.size, 100) ?? 100;
   const width = cleanNumber(scene.width, 2400) ?? 2400;
   const height = cleanNumber(scene.height, 1600) ?? 1600;
-  const tokenData = [];
+  const entries = [];
 
   playerActors.forEach((entry, index) => {
     const position = formationPosition(
@@ -861,14 +916,20 @@ async function createSceneTokens(
       gridSize,
     );
 
-    tokenData.push(sceneTokenData(
-      entry.actor,
-      {
-        ...position,
-        friendly: true,
-        hpBar: true,
-      },
-    ));
+    entries.push({
+      data: sceneTokenData(
+        entry.actor,
+        {
+          ...position,
+          friendly: true,
+          hpBar: true,
+        },
+      ),
+      initiative: cleanNumber(
+        entry.character.initiative,
+        null,
+      ),
+    });
   });
 
   enemyActors.forEach((entry, index) => {
@@ -881,30 +942,47 @@ async function createSceneTokens(
       gridSize,
     );
 
-    tokenData.push(sceneTokenData(
-      entry.actor,
-      {
-        ...position,
-        friendly: false,
-        hpBar: false,
-      },
-    ));
+    entries.push({
+      data: sceneTokenData(
+        entry.actor,
+        {
+          ...position,
+          friendly: false,
+          hpBar: false,
+        },
+      ),
+      initiative: cleanNumber(
+        entry.enemy.initiative,
+        null,
+      ),
+    });
   });
 
-  if (tokenData.length === 0) {
+  if (entries.length === 0) {
     throw new Error(
       "The RPG Your Way encounter did not contain any combatants Foundry could place.",
     );
   }
 
-  await scene.createEmbeddedDocuments(
+  const tokens = await scene.createEmbeddedDocuments(
     "Token",
-    tokenData,
+    entries.map((entry) => entry.data),
+  );
+
+  return tokens.map(
+    (token, index) => ({
+      token,
+      initiative: entries[index]?.initiative ?? null,
+    }),
   );
 }
 
 async function renderEncounter(service, rawEncounter) {
   const encounter = normalizeEncounter(rawEncounter);
+  const sceneSummary = cleanString(
+    encounter.payload?.scene?.summary,
+    "",
+  );
   const roster = await loadRosterForEncounter(
     service,
     encounter.payload,
@@ -917,13 +995,15 @@ async function renderEncounter(service, rawEncounter) {
     service,
     encounter,
     roster,
+    sceneSummary,
   );
   const enemyActors = await createEnemyActors(
     encounter.id,
     encounter.payload.enemies,
+    sceneSummary,
   );
 
-  await createSceneTokens(
+  const placements = await createSceneTokens(
     scene,
     playerActors,
     enemyActors,
@@ -933,9 +1013,16 @@ async function renderEncounter(service, rawEncounter) {
     pullUsers: true,
   });
 
+  const combat = await createManagedCombat({
+    scene,
+    encounterId: encounter.id,
+    placements,
+  });
+
   return {
     encounterId: encounter.id,
     foundrySceneId: scene.id,
+    foundryCombatId: combat.id,
     playerCount: playerActors.length,
     enemyCount: enemyActors.length,
   };
@@ -1016,7 +1103,7 @@ async function pollOnce(runtime) {
       );
 
       ui.notifications.info(
-        `RPG Your Way combat ready: ${rendered.playerCount} player token${rendered.playerCount === 1 ? "" : "s"} and ${rendered.enemyCount} enemy token${rendered.enemyCount === 1 ? "" : "s"}.`,
+        `RPG Your Way combat ready: ${rendered.playerCount} player token${rendered.playerCount === 1 ? "" : "s"}, ${rendered.enemyCount} enemy token${rendered.enemyCount === 1 ? "" : "s"}, and initiative loaded.`,
       );
 
       return rendered;
