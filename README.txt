@@ -1,12 +1,9 @@
-RPG Your Way Foundry Integrator 0.2.2 complete-sync hotfix
+RPG Your Way Foundry Integrator 2.7.0
 
-Why: the local Foundry installation can become a mixed build when the 0.2.1 three-file slash-command hotfix is applied over the older 0.1.9 module. That produces `service.getConnection is not a function` after pairing.
+Install and update this package through Foundry using the stable manifest URL:
 
-Replace ALL five matching files in the local Foundry module and in the repository:
-  module.json
-  scripts/main.js
-  scripts/chat-commands.js
-  scripts/api-client.js
-  scripts/integration-service.js
+https://github.com/ForNextI/RPGYW-Foundry/releases/latest/download/module.json
 
-This build uses https://www.rpgyourway.com as the API origin and includes the connection lookup methods required after pairing.
+The GitHub repository is development source. End users should not copy repository files into Foundry by hand.
+
+RPG Your Way remains the campaign and AIGM authority. Foundry is the visual and tactical tabletop.

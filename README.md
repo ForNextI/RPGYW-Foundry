@@ -1,35 +1,56 @@
 # RPG Your Way Foundry Integrator
 
-Current development version: **0.2.0**
+Current release: **2.7.0**
 
-The RPG Your Way Foundry Integrator connects a Foundry VTT world to an RPG Your Way cloud campaign. Foundry remains the visual tabletop. RPG Your Way remains the AIGM, campaign-memory, character/rules, and billing authority.
+The RPG Your Way Foundry Integrator connects a Foundry VTT world to an RPG Your Way cloud campaign. RPG Your Way remains the text-play surface, AIGM, campaign-memory, character/rules, multiplayer, and billing authority. Foundry provides the visual tabletop when the campaign needs one.
 
-## 0.2.0 test workflow
+## Install from the internet
 
-1. Install or update the Integrator in Foundry and enable it in the World.
-2. Open the World as a Foundry GM.
-3. In Foundry chat, type:
+End users should install the Integrator through Foundry rather than copying this repository into Foundry's data directory.
 
-   `/rpgyw connect`
+Stable manifest URL:
 
-4. The Integrator posts a private connection card containing a short code and an RPG Your Way approval link.
-5. Open the link, sign in to RPG Your Way if necessary, choose the cloud campaign, and approve.
-6. Return to Foundry. Within a few seconds the Integrator should report that the world is connected.
-7. Type `/rpgyw status` to verify the connection.
+`https://github.com/ForNextI/RPGYW-Foundry/releases/latest/download/module.json`
 
-This is the first live handshake milestone. 0.2.0 does **not** yet hand Foundry gameplay operations to the AIGM.
+In Foundry Setup:
 
-## Test commands
+1. Open **Add-on Modules**.
+2. Choose **Install Module**.
+3. Paste the stable manifest URL.
+4. Install **RPG Your Way Foundry Integrator**.
+5. Enable it in the desired World.
+
+Foundry can use the same manifest URL to discover future releases.
+
+## Development and releases
+
+The GitHub repository is development source. A tagged release is the distributable Foundry package.
+
+For release `2.7.0`:
+
+`git tag v2.7.0`
+
+`git push origin v2.7.0`
+
+The GitHub Actions release workflow validates the manifest and JavaScript, builds `rpg-your-way-integrator.zip`, and publishes both the ZIP and `module.json` to the GitHub Release.
+
+## Current test commands
 
 - `/rpgyw connect`
+- `/rpgyw link`
+- `/rpgyw roster`
+- `/rpgyw map NUMBER`
+- `/rpgyw unmap NUMBER`
+- `/rpgyw probe`
 - `/rpgyw status`
 - `/rpgyw reset`
 - `/rpgyw help`
+- `/aigm ACTION` (development test path, not the intended final gameplay interface)
 
 ## Authority boundary
 
-RPG Your Way is authoritative for character records, inventory, weapons, class abilities, game rules, campaign continuity, and AIGM decisions.
+RPG Your Way is authoritative for character records, game rules, campaign continuity, AIGM decisions, player identity, multiplayer state, and billing.
 
-Foundry is initially authoritative for the local visual tabletop state that it renders: scenes, token placement, player permissions, and other VTT presentation state. Later 0.2.x work will add tightly scoped synchronization and validated AIGM commands.
+Foundry is the visual and tactical tabletop. The Integrator exchanges only tightly scoped structured state and validated commands with RPG Your Way.
 
-The Integrator is not designed to upload a user's purchased Foundry maps, token artwork, commercial compendia, installed adventures, or other third-party content to the AIGM.
+The Integrator is not designed to upload a user's purchased Foundry maps, token artwork, commercial compendia, installed adventures, or other third-party content to the AIGM. Local Foundry assets may later be resolved locally for visual use without transferring those libraries to RPG Your Way.

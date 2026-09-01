@@ -1,0 +1,71 @@
+name: Publish Foundry Integrator
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Validate release metadata and JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node <<'NODE'
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync('module.json', 'utf8'));
+          const tag = process.env.GITHUB_REF_NAME || '';
+          const version = tag.replace(/^v/, '');
+          const expectedManifest = 'https://github.com/ForNextI/RPGYW-Foundry/releases/latest/download/module.json';
+          const expectedDownload = `https://github.com/ForNextI/RPGYW-Foundry/releases/download/${tag}/rpg-your-way-integrator.zip`;
+
+          if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error(`Release tag must be vMAJOR.MINOR.PATCH; received ${tag || '(empty)'}.`);
+          if (manifest.id !== 'rpg-your-way-integrator') throw new Error(`Unexpected Foundry package id: ${manifest.id}`);
+          if (manifest.version !== version) throw new Error(`module.json version ${manifest.version} does not match tag ${tag}.`);
+          if (manifest.manifest !== expectedManifest) throw new Error('module.json manifest URL is not the stable latest-release URL.');
+          if (manifest.download !== expectedDownload) throw new Error(`module.json download URL must be ${expectedDownload}`);
+          console.log(`Validated RPG Your Way Foundry Integrator ${version}.`);
+          NODE
+
+          for file in scripts/*.js; do
+            node --check "$file"
+          done
+
+      - name: Build Foundry package archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release rpg-your-way-integrator.zip
+          mkdir release
+          cp module.json README.md README.txt release/
+          cp -R scripts release/
+          (
+            cd release
+            zip -r ../rpg-your-way-integrator.zip .
+          )
+          test -s rpg-your-way-integrator.zip
+
+      - name: Publish GitHub Release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" module.json rpg-your-way-integrator.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" module.json rpg-your-way-integrator.zip \
+              --title "RPG Your Way Foundry Integrator ${GITHUB_REF_NAME#v}" \
+              --generate-notes \
+              --latest
+          fi
