@@ -1,6 +1,6 @@
 # RPG Your Way Foundry Integrator
 
-Current release: **2.9.0**
+Current release: **2.10.0**
 
 The RPG Your Way Foundry Integrator connects a Foundry VTT world to an RPG Your Way cloud campaign. RPG Your Way remains the text-play surface, AIGM, campaign-memory, character/rules, multiplayer, and billing authority. Foundry provides the visual tabletop when the campaign needs one.
 
@@ -39,11 +39,11 @@ Foundry can use the same manifest URL to discover future releases.
 
 The GitHub repository is development source. A tagged release is the distributable Foundry package.
 
-For release `2.9.0`:
+For release `2.10.0`:
 
-`git tag v2.9.0`
+`git tag v2.10.0`
 
-`git push origin v2.9.0`
+`git push origin v2.10.0`
 
 The GitHub Actions release workflow validates the manifest and JavaScript, builds `rpg-your-way-integrator.zip`, and publishes both the ZIP and `module.json` to the GitHub Release.
 

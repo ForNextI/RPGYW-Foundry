@@ -45,7 +45,7 @@ Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) {
     moduleRecord.api = Object.freeze({
-      version: "2.9.0",
+      version: "2.10.0",
       integration: integrationService,
       commands: chatCommands,
       combatHandoff,

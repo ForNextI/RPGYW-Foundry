@@ -24,6 +24,8 @@ const ASSET_BRANCH_HINTS = Object.freeze([
   "tokens",
   "portrait",
   "portraits",
+  "icon",
+  "icons",
 ]);
 
 const WRAPPER_BRANCH_HINTS = Object.freeze([
@@ -168,12 +170,14 @@ async function buildImageIndex() {
     return [];
   }
 
-  const root = await browseDirectory(
-    FilePickerClass,
-    "modules",
-  );
+  const roots = (
+    await Promise.all([
+      browseDirectory(FilePickerClass, "modules"),
+      browseDirectory(FilePickerClass, "systems/dnd5e"),
+    ])
+  ).filter(Boolean);
 
-  if (!root) {
+  if (roots.length === 0) {
     return [];
   }
 
@@ -182,28 +186,30 @@ async function buildImageIndex() {
   const queue = [];
   const seenDirectories = new Set();
 
-  for (const rawFile of root.files ?? []) {
-    const path = pathValue(rawFile);
+  for (const root of roots) {
+    for (const rawFile of root.files ?? []) {
+      const path = pathValue(rawFile);
 
-    if (
-      path
-        && hasImageExtension(path)
-        && !seenFiles.has(path)
-    ) {
-      seenFiles.add(path);
-      files.push(path);
+      if (
+        path
+          && hasImageExtension(path)
+          && !seenFiles.has(path)
+      ) {
+        seenFiles.add(path);
+        files.push(path);
+      }
     }
-  }
 
-  for (const rawDirectory of root.dirs ?? []) {
-    const path = pathValue(rawDirectory);
+    for (const rawDirectory of root.dirs ?? []) {
+      const path = pathValue(rawDirectory);
 
-    if (path) {
-      queue.push({
-        path,
-        depth: 0,
-        inAssetBranch: false,
-      });
+      if (path) {
+        queue.push({
+          path,
+          depth: 0,
+          inAssetBranch: false,
+        });
+      }
     }
   }
 
@@ -284,7 +290,7 @@ async function buildImageIndex() {
   }
 
   console.info(
-    `rpg-your-way-integrator | indexed ${files.length} local module image path${files.length === 1 ? "" : "s"} across ${browsedDirectories} director${browsedDirectories === 1 ? "y" : "ies"}`,
+    `rpg-your-way-integrator | indexed ${files.length} local Foundry image path${files.length === 1 ? "" : "s"} across ${browsedDirectories} director${browsedDirectories === 1 ? "y" : "ies"}`,
   );
 
   return files;
@@ -437,10 +443,11 @@ function loadImageDimensions(src) {
   });
 }
 
-export async function resolveLocalMapImage(sceneSpec) {
+export async function resolveLocalMapImage(sceneSpec, extraTerms = []) {
   const terms = meaningfulTerms(
     sceneSpec?.label,
     sceneSpec?.summary,
+    extraTerms,
   );
 
   const src = await bestImage({
@@ -460,6 +467,97 @@ export async function resolveLocalMapImage(sceneSpec) {
     width: dimensions?.width ?? null,
     height: dimensions?.height ?? null,
   };
+}
+
+let compendiumVisualIndexPromise = null;
+
+async function compendiumVisualIndex() {
+  if (!compendiumVisualIndexPromise) {
+    compendiumVisualIndexPromise = (async () => {
+      const rows = [];
+
+      for (const pack of game.packs ?? []) {
+        if (pack.documentName !== "Actor") continue;
+
+        try {
+          const index = await pack.getIndex({
+            fields: [
+              "name",
+              "img",
+              "prototypeToken.texture.src",
+            ],
+          });
+
+          for (const entry of index ?? []) {
+            const tokenSrc = (
+              entry.prototypeToken?.texture?.src
+                || foundry?.utils?.getProperty?.(
+                  entry,
+                  "prototypeToken.texture.src",
+                )
+                || entry.img
+                || null
+            );
+
+            if (!tokenSrc) continue;
+            rows.push({
+              name: String(entry.name || ""),
+              src: String(tokenSrc),
+              packageName: String(
+                pack.metadata?.packageName
+                  || pack.metadata?.package
+                  || pack.collection
+                  || "",
+              ),
+            });
+          }
+        } catch {
+          // Packs that decline indexing simply do not participate.
+        }
+      }
+
+      return rows.slice(0, 8_000);
+    })();
+  }
+
+  return compendiumVisualIndexPromise;
+}
+
+export async function resolveCompendiumTokenImage({
+  name,
+  visualTags = [],
+  sceneSummary = "",
+}) {
+  const terms = meaningfulTerms(
+    name,
+    visualTags,
+    sceneSummary,
+  );
+  if (terms.length === 0) return null;
+
+  const rows = await compendiumVisualIndex();
+  let best = null;
+  let bestScore = 6;
+
+  for (const row of rows) {
+    const searchable = normalizePath(
+      `${row.name} ${row.src} ${row.packageName}`,
+    );
+    let score = normalize(row.name) === normalize(name) ? 8 : 0;
+
+    for (const term of terms) {
+      if (searchable.includes(term)) {
+        score += term.length >= 7 ? 4 : 3;
+      }
+    }
+
+    if (score > bestScore) {
+      best = row.src;
+      bestScore = score;
+    }
+  }
+
+  return best;
 }
 
 export async function resolveLocalTokenImage({

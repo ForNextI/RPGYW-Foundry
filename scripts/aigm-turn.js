@@ -16,6 +16,64 @@ function requireMessage(value) {
   return message;
 }
 
+function foundryTableSnapshot() {
+  const scene = canvas?.scene ?? null;
+  if (!scene) return null;
+
+  const combat = game.combat?.scene?.id === scene.id
+    ? game.combat
+    : null;
+
+  return {
+    version: 1,
+    scene: {
+      id: scene.id,
+      name: scene.name,
+      width: Number(scene.width) || 0,
+      height: Number(scene.height) || 0,
+      gridSize: Number(scene.grid?.size) || 100,
+      gridDistance: Number(scene.grid?.distance) || 5,
+      gridUnits: String(scene.grid?.units || "ft"),
+    },
+    combat: combat
+      ? {
+          started: combat.started === true,
+          round: Number(combat.round) || 0,
+          turn: Number.isFinite(combat.turn) ? Number(combat.turn) : null,
+          combatants: Array.from(combat.combatants ?? []).map((entry) => ({
+            name: String(entry.name || ""),
+            tokenId: String(entry.tokenId || ""),
+            initiative: Number.isFinite(entry.initiative)
+              ? Number(entry.initiative)
+              : null,
+            defeated: Boolean(entry.isDefeated ?? entry.defeated),
+          })),
+        }
+      : null,
+    tokens: Array.from(scene.tokens ?? []).map((token) => ({
+      id: String(token.id || ""),
+      name: String(token.name || ""),
+      campaignCharacterId: String(
+        token.actor?.getFlag?.(
+          "rpg-your-way-integrator",
+          "campaignCharacterId",
+        ) || "",
+      ),
+      combatantId: String(
+        token.actor?.getFlag?.(
+          "rpg-your-way-integrator",
+          "combatantId",
+        ) || "",
+      ),
+      x: Number(token.x) || 0,
+      y: Number(token.y) || 0,
+      width: Number(token.width) || 1,
+      height: Number(token.height) || 1,
+      disposition: Number(token.disposition) || 0,
+    })),
+  };
+}
+
 function normalizeResponse(value) {
   if (
     !value
@@ -38,6 +96,8 @@ function normalizeResponse(value) {
     message: value.message,
     scene: String(value.scene || ""),
     combatSuggested: value.combatSuggested === true,
+    vttQueued: value.vttQueued === true,
+    vttWarning: String(value.vttWarning || ""),
     billing: value.billing ?? null,
   });
 }
@@ -60,6 +120,7 @@ export async function sendAigmTurn(service, rawMessage) {
       body: {
         version: 1,
         message,
+        tableSnapshot: foundryTableSnapshot(),
       },
     },
   );

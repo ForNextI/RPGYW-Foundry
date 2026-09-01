@@ -2,7 +2,7 @@
   "id": "rpg-your-way-integrator",
   "title": "RPG Your Way Foundry Integrator",
   "description": "Connects a Foundry VTT world to an RPG Your Way cloud campaign. RPG Your Way remains the campaign and AIGM authority while Foundry provides the visual tabletop.",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "authors": [
     {
       "name": "RPG Your Way"
@@ -30,7 +30,7 @@
   "socket": true,
   "url": "https://www.rpgyourway.com/",
   "manifest": "https://github.com/ForNextI/RPGYW-Foundry/releases/latest/download/module.json",
-  "download": "https://github.com/ForNextI/RPGYW-Foundry/releases/download/v2.9.0/rpg-your-way-integrator.zip",
+  "download": "https://github.com/ForNextI/RPGYW-Foundry/releases/download/v2.10.0/rpg-your-way-integrator.zip",
   "readme": "https://github.com/ForNextI/RPGYW-Foundry/blob/main/README.md",
   "bugs": "https://github.com/ForNextI/RPGYW-Foundry/issues"
 }

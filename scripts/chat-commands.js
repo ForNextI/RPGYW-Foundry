@@ -414,7 +414,7 @@ async function unmap(service, selector) {
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 2.9.0</h3>
+      <h3>RPG Your Way Foundry Integrator 2.10.0</h3>
       <p><strong>/aigm ACTION</strong> — send a live campaign turn to the RPG Your Way AIGM while staying in Foundry.</p>
       <p><strong>/rpgyw connect</strong> — GMs connect the world; Players use the same command as a shortcut to player linking.</p>
       <p><strong>/rpgyw link</strong> — link this Foundry user to your RPG Your Way account.</p>
@@ -495,6 +495,17 @@ function registerFoundryChatCommand(service) {
           result.gameMasterName || "RPG Your Way",
           result.message,
         );
+
+        if (result.vttQueued) {
+          notifyInfo(
+            "RPG Your Way queued a revised VTT setup for the Integrator controller.",
+          );
+        }
+        if (result.vttWarning) {
+          ui.notifications.warn(
+            `RPG Your Way VTT setup warning: ${result.vttWarning}`,
+          );
+        }
 
         if (result.billing?.settlementWarning) {
           ui.notifications.warn(

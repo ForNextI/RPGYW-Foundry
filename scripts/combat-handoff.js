@@ -19,6 +19,7 @@ import {
   installFoundryFocusBridge,
 } from "./focus-navigation.js";
 import {
+  resolveCompendiumTokenImage,
   resolveLocalMapImage,
   resolveLocalTokenImage,
 } from "./local-assets.js";
@@ -116,20 +117,40 @@ function ensureReturnButton() {
     return existing;
   }
 
+  const dock = document.createElement("div");
+  dock.id = NAV_BUTTON_ID;
+  dock.style.position = "fixed";
+  dock.style.right = "8px";
+  dock.style.bottom = "0";
+  dock.style.zIndex = "100000";
+  dock.style.display = "grid";
+  dock.style.justifyItems = "end";
+  dock.style.transform = "translateY(calc(100% - 26px))";
+  dock.style.transition = "transform 140ms ease";
+
+  const tab = document.createElement("button");
+  tab.type = "button";
+  tab.textContent = "▲ RPGYW";
+  tab.title = "Show or hide the RPG Your Way navigation control.";
+  tab.style.minHeight = "26px";
+  tab.style.padding = "2px 8px";
+  tab.style.border = "1px solid rgba(255,255,255,0.35)";
+  tab.style.borderBottom = "0";
+  tab.style.borderRadius = "8px 8px 0 0";
+  tab.style.background = "rgba(20,24,20,0.94)";
+  tab.style.color = "white";
+  tab.style.fontWeight = "700";
+  tab.style.cursor = "pointer";
+
   const button = document.createElement("button");
-  button.id = NAV_BUTTON_ID;
   button.type = "button";
   button.textContent = "Go to RPG Your Way";
   button.title = "Switch to RPG Your Way. This does not change game state.";
   button.setAttribute("aria-label", button.title);
-  button.style.position = "fixed";
-  button.style.right = "12px";
-  button.style.bottom = "12px";
-  button.style.zIndex = "100000";
   button.style.padding = "9px 12px";
   button.style.border = "1px solid rgba(255,255,255,0.35)";
-  button.style.borderRadius = "8px";
-  button.style.background = "rgba(20,24,20,0.92)";
+  button.style.borderRadius = "8px 0 0 0";
+  button.style.background = "rgba(20,24,20,0.94)";
   button.style.color = "white";
   button.style.fontWeight = "700";
   button.style.cursor = "pointer";
@@ -138,8 +159,19 @@ function ensureReturnButton() {
     "click",
     () => void focusOrOpenRpgYourWay(),
   );
-  document.body.append(button);
-  return button;
+
+  let open = false;
+  tab.addEventListener("click", () => {
+    open = !open;
+    tab.textContent = open ? "▼ RPGYW" : "▲ RPGYW";
+    dock.style.transform = open
+      ? "translateY(0)"
+      : "translateY(calc(100% - 26px))";
+  });
+
+  dock.append(tab, button);
+  document.body.append(dock);
+  return dock;
 }
 
 function characterMonogram(name) {
@@ -432,6 +464,7 @@ async function createEnemyActors(
   encounterId,
   enemies,
   sceneSummary,
+  sceneSetup,
 ) {
   const nameCounts = new Map();
 
@@ -455,15 +488,29 @@ async function createEnemyActors(
       ordinal,
       nameCounts.get(key) ?? 1,
     );
+    const plannedActor = findPlannedActor(
+      sceneSetup,
+      enemy.displayName,
+    );
+    const visualTags = plannedActor?.visual_tags ?? [];
     const localTokenSrc = visual.tokenSrc
       ? null
       : await resolveLocalTokenImage({
         name: enemy.displayName,
+        visualTags,
+        sceneSummary,
+      });
+    const compendiumTokenSrc = visual.tokenSrc || localTokenSrc
+      ? null
+      : await resolveCompendiumTokenImage({
+        name: enemy.displayName,
+        visualTags,
         sceneSummary,
       });
     const tokenSrc = (
       visual.tokenSrc
         || localTokenSrc
+        || compendiumTokenSrc
         || monogramDataUri(monogram)
     );
     const actorImg = visual.actorImg || FALLBACK_ACTOR_IMAGE;
@@ -523,6 +570,205 @@ async function createEnemyActors(
   }
 
   return actors;
+}
+
+function normalizeSetupPlan(value) {
+  if (!plainObject(value) || value.enabled !== true) {
+    return null;
+  }
+
+  const snap = (raw, fallback, maximum) => {
+    const number = cleanNumber(raw, fallback) ?? fallback;
+    return Math.max(
+      0,
+      Math.min(maximum, Math.round(number / 5) * 5),
+    );
+  };
+
+  const widthFt = Math.max(20, snap(value.width_ft, 60, 300));
+  const heightFt = Math.max(20, snap(value.height_ft, 40, 300));
+  const start = plainObject(value.player_start_area)
+    ? value.player_start_area
+    : {};
+
+  return {
+    enabled: true,
+    environment: cleanString(value.environment, "combat area"),
+    width_ft: widthFt,
+    height_ft: heightFt,
+    player_start_area: {
+      x_ft: snap(start.x_ft, 5, widthFt),
+      y_ft: snap(start.y_ft, 5, heightFt),
+      width_ft: Math.max(5, snap(start.width_ft, 15, widthFt)),
+      height_ft: Math.max(
+        5,
+        snap(start.height_ft, Math.max(10, heightFt - 10), heightFt),
+      ),
+    },
+    features: Array.isArray(value.features)
+      ? value.features.slice(0, 16).filter(plainObject)
+      : [],
+    actors: Array.isArray(value.actors)
+      ? value.actors.slice(0, 40).filter(plainObject)
+      : [],
+    asset_search_terms: Array.isArray(value.asset_search_terms)
+      ? value.asset_search_terms
+          .filter((entry) => typeof entry === "string")
+          .slice(0, 16)
+      : [],
+  };
+}
+
+function findPlannedActor(setup, name) {
+  const target = normalizeName(name);
+  if (!setup || !target) return null;
+
+  return setup.actors.find(
+    (actor) => normalizeName(actor.name) === target,
+  ) ?? null;
+}
+
+function feetToPixels(value, gridSize) {
+  return Math.round((Number(value) || 0) / 5 * gridSize);
+}
+
+function setupPosition(actorPlan, gridSize, width, height) {
+  if (!actorPlan) return null;
+
+  return {
+    x: clamp(
+      feetToPixels(actorPlan.x_ft, gridSize),
+      0,
+      Math.max(0, width - gridSize),
+    ),
+    y: clamp(
+      feetToPixels(actorPlan.y_ft, gridSize),
+      0,
+      Math.max(0, height - gridSize),
+    ),
+  };
+}
+
+function playerSetupPosition(
+  index,
+  count,
+  setup,
+  gridSize,
+  width,
+  height,
+) {
+  if (!setup) {
+    return formationPosition(
+      index,
+      count,
+      "left",
+      width,
+      height,
+      gridSize,
+    );
+  }
+
+  const area = setup.player_start_area;
+  const x0 = feetToPixels(area.x_ft, gridSize);
+  const y0 = feetToPixels(area.y_ft, gridSize);
+  const areaWidth = Math.max(
+    gridSize,
+    feetToPixels(area.width_ft, gridSize),
+  );
+  const areaHeight = Math.max(
+    gridSize,
+    feetToPixels(area.height_ft, gridSize),
+  );
+  const columns = Math.max(1, Math.floor(areaWidth / gridSize));
+  const rows = Math.max(1, Math.floor(areaHeight / gridSize));
+  const column = index % columns;
+  const row = Math.floor(index / columns) % rows;
+
+  return {
+    x: clamp(
+      x0 + column * gridSize,
+      0,
+      Math.max(0, width - gridSize),
+    ),
+    y: clamp(
+      y0 + row * gridSize,
+      0,
+      Math.max(0, height - gridSize),
+    ),
+  };
+}
+
+function setupDrawingData(setup, scene) {
+  if (!setup) return [];
+
+  const gridSize = cleanNumber(scene.grid?.size, 100) ?? 100;
+  const outline = {
+    label: setup.environment || "Combat area",
+    kind: "room",
+    x_ft: 0,
+    y_ft: 0,
+    width_ft: setup.width_ft,
+    height_ft: setup.height_ft,
+  };
+
+  return [outline, ...setup.features].map((feature) => ({
+    name: `RPGYW ${cleanString(
+      feature.label,
+      feature.kind || "feature",
+    )}`.slice(0, 120),
+    x: feetToPixels(feature.x_ft, gridSize),
+    y: feetToPixels(feature.y_ft, gridSize),
+    shape: {
+      type: "rectangle",
+      x: 0,
+      y: 0,
+      width: Math.max(
+        gridSize,
+        feetToPixels(feature.width_ft, gridSize),
+      ),
+      height: Math.max(
+        gridSize,
+        feetToPixels(feature.height_ft, gridSize),
+      ),
+      anchorX: 0,
+      anchorY: 0,
+    },
+    fillType: CONST?.DRAWING_FILL_TYPES?.NONE ?? 0,
+    fillAlpha: 0,
+    strokeAlpha: 0.9,
+    strokeWidth: feature.kind === "door" ? 6 : 3,
+    strokeColor: 0x353535,
+    text: cleanString(feature.label, "").slice(0, 60),
+    textAlpha: feature.kind === "room" ? 0.45 : 0.7,
+    fontSize: Math.max(14, Math.min(26, Math.round(gridSize / 4))),
+    locked: true,
+    flags: {
+      [MODULE_ID]: {
+        managedSetupDrawing: true,
+      },
+    },
+  }));
+}
+
+async function redrawSetup(scene, setup) {
+  const ids = Array.from(scene.drawings ?? [])
+    .filter(
+      (drawing) => drawing.getFlag(
+        MODULE_ID,
+        "managedSetupDrawing",
+      ) === true,
+    )
+    .map((drawing) => drawing.id)
+    .filter(Boolean);
+
+  if (ids.length > 0) {
+    await scene.deleteEmbeddedDocuments("Drawing", ids);
+  }
+
+  const drawings = setupDrawingData(setup, scene);
+  if (drawings.length > 0) {
+    await scene.createEmbeddedDocuments("Drawing", drawings);
+  }
 }
 
 const SCENE_KEYWORDS = Object.freeze([
@@ -619,19 +865,27 @@ async function ensureManagedScene(encounter) {
     ),
   ) ?? null;
 
+  const setup = normalizeSetupPlan(encounter.payload?.vttSetup);
   const donor = findLocalSceneDonor(sceneSpec, scene?.id ?? null);
   const localMap = donor
     ? null
-    : await resolveLocalMapImage(sceneSpec);
-  const width = donor
-    ? safeSceneNumber(donor.width, 2400, 800, 12000)
-    : safeSceneNumber(localMap?.width, 2400, 800, 12000);
-  const height = donor
-    ? safeSceneNumber(donor.height, 1600, 800, 12000)
-    : safeSceneNumber(localMap?.height, 1600, 800, 12000);
+    : await resolveLocalMapImage(
+      sceneSpec,
+      setup?.asset_search_terms ?? [],
+    );
   const gridSize = donor
     ? safeSceneNumber(donor.grid?.size, 100, 40, 300)
     : 100;
+  const width = setup
+    ? Math.max(gridSize * 4, feetToPixels(setup.width_ft, gridSize))
+    : donor
+      ? safeSceneNumber(donor.width, 2400, 800, 12000)
+      : safeSceneNumber(localMap?.width, 2400, 800, 12000);
+  const height = setup
+    ? Math.max(gridSize * 4, feetToPixels(setup.height_ft, gridSize))
+    : donor
+      ? safeSceneNumber(donor.height, 1600, 800, 12000)
+      : safeSceneNumber(localMap?.height, 1600, 800, 12000);
   const label = cleanString(
     sceneSpec.label,
     "Combat",
@@ -661,8 +915,8 @@ async function ensureManagedScene(encounter) {
     grid: {
       type: squareGridType(),
       size: gridSize,
-      distance: cleanNumber(donor?.grid?.distance, 5) ?? 5,
-      units: cleanString(donor?.grid?.units, "ft"),
+      distance: setup ? 5 : (cleanNumber(donor?.grid?.distance, 5) ?? 5),
+      units: setup ? "ft" : cleanString(donor?.grid?.units, "ft"),
     },
     flags: {
       [MODULE_ID]: {
@@ -670,6 +924,7 @@ async function ensureManagedScene(encounter) {
         [SOURCE_ENCOUNTER_FLAG]: encounter.id,
         localBackgroundSourceSceneId: donor?.id ?? null,
         localBackgroundAsset: localMap?.src ?? null,
+        setupEnvironment: setup?.environment ?? null,
       },
     },
   };
@@ -692,7 +947,12 @@ async function ensureManagedScene(encounter) {
     await scene.deleteEmbeddedDocuments("Token", tokenIds);
   }
 
-  return scene;
+  await redrawSetup(scene, setup);
+
+  return {
+    scene,
+    setup,
+  };
 }
 
 function formationPosition(
@@ -900,6 +1160,7 @@ async function createSceneTokens(
   scene,
   playerActors,
   enemyActors,
+  setup,
 ) {
   const gridSize = cleanNumber(scene.grid?.size, 100) ?? 100;
   const width = cleanNumber(scene.width, 2400) ?? 2400;
@@ -907,13 +1168,13 @@ async function createSceneTokens(
   const entries = [];
 
   playerActors.forEach((entry, index) => {
-    const position = formationPosition(
+    const position = playerSetupPosition(
       index,
       playerActors.length,
-      "left",
+      setup,
+      gridSize,
       width,
       height,
-      gridSize,
     );
 
     entries.push({
@@ -933,7 +1194,16 @@ async function createSceneTokens(
   });
 
   enemyActors.forEach((entry, index) => {
-    const position = formationPosition(
+    const planned = findPlannedActor(
+      setup,
+      entry.enemy.displayName,
+    );
+    const position = setupPosition(
+      planned,
+      gridSize,
+      width,
+      height,
+    ) || formationPosition(
       index,
       enemyActors.length,
       "right",
@@ -987,7 +1257,9 @@ async function renderEncounter(service, rawEncounter) {
     service,
     encounter.payload,
   );
-  const scene = await ensureManagedScene(encounter);
+  const managed = await ensureManagedScene(encounter);
+  const scene = managed.scene;
+  const setup = managed.setup;
 
   await deleteManagedEnemyActors();
 
@@ -1001,12 +1273,14 @@ async function renderEncounter(service, rawEncounter) {
     encounter.id,
     encounter.payload.enemies,
     sceneSummary,
+    setup,
   );
 
   const placements = await createSceneTokens(
     scene,
     playerActors,
     enemyActors,
+    setup,
   );
 
   await scene.activate({
@@ -1103,7 +1377,7 @@ async function pollOnce(runtime) {
       );
 
       ui.notifications.info(
-        `RPG Your Way combat ready: ${rendered.playerCount} player token${rendered.playerCount === 1 ? "" : "s"}, ${rendered.enemyCount} enemy token${rendered.enemyCount === 1 ? "" : "s"}, and initiative loaded.`,
+        `RPG Your Way setup ready: ${rendered.playerCount} player token${rendered.playerCount === 1 ? "" : "s"}, ${rendered.enemyCount} enemy token${rendered.enemyCount === 1 ? "" : "s"}, and initiative loaded. Position player characters, then use Begin Combat for round 1.`,
       );
 
       return rendered;
@@ -1192,6 +1466,15 @@ export function initializeFoundryCombatHandoff(service) {
     () => void pollOnce(runtime),
     500,
   );
+
+  const pollOnWake = () => void pollOnce(runtime);
+  window.addEventListener("focus", pollOnWake);
+  window.addEventListener("online", pollOnWake);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      pollOnWake();
+    }
+  });
 
   handoffRuntime = runtime;
   return publicApi;

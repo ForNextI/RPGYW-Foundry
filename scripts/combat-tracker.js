@@ -125,9 +125,7 @@ export async function createManagedCombat({
 
   await combat.activate();
 
-  if (!combat.started) {
-    await combat.startCombat();
-  }
-
+  // Round 0 is the pre-combat setup phase. Players may position their own
+  // characters before the normal Foundry Begin Combat control starts round 1.
   return combat;
 }
