@@ -1,0 +1,64 @@
+--- a/module.json
++++ b/module.json
+@@ -2,7 +2,7 @@
+   "id": "rpg-your-way-integrator",
+   "title": "RPG Your Way Foundry Integrator",
+   "description": "Connects a Foundry VTT world to an RPG Your Way cloud campaign. RPG Your Way remains the campaign and AIGM authority while Foundry provides the visual tabletop.",
+-  "version": "2.8.0",
++  "version": "2.8.1",
+   "authors": [
+     {
+       "name": "RPG Your Way"
+@@ -30,7 +30,7 @@
+   "socket": true,
+   "url": "https://www.rpgyourway.com/",
+   "manifest": "https://github.com/ForNextI/RPGYW-Foundry/releases/latest/download/module.json",
+-  "download": "https://github.com/ForNextI/RPGYW-Foundry/releases/download/v2.8.0/rpg-your-way-integrator.zip",
++  "download": "https://github.com/ForNextI/RPGYW-Foundry/releases/download/v2.8.1/rpg-your-way-integrator.zip",
+   "readme": "https://github.com/ForNextI/RPGYW-Foundry/blob/main/README.md",
+   "bugs": "https://github.com/ForNextI/RPGYW-Foundry/issues"
+ }
+--- a/scripts/main.js
++++ b/scripts/main.js
+@@ -43,4 +43,4 @@
+     moduleRecord.api = Object.freeze({
+-      version: "2.8.0",
++      version: "2.8.1",
+       integration: integrationService,
+       commands: chatCommands,
+--- a/scripts/chat-commands.js
++++ b/scripts/chat-commands.js
+@@ -353,3 +353,3 @@
+     <div class="rpg-your-way-help">
+-      <h3>RPG Your Way Foundry Integrator 2.8.0</h3>
++      <h3>RPG Your Way Foundry Integrator 2.8.1</h3>
+       <p><strong>/aigm ACTION</strong> — send a live campaign turn to the RPG Your Way AIGM.</p>
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,5 @@
+ # RPG Your Way Foundry Integrator
+ 
+-Current release: **2.8.0**
++Current release: **2.8.1**
+ 
+ The RPG Your Way Foundry Integrator connects a Foundry VTT world to an RPG Your Way cloud campaign.
+--- a/README.md
++++ b/README.md
+@@ -55,7 +55,7 @@
+-For release `2.8.0`:
++For release `2.8.1`:
+ 
+-`git tag v2.8.0`
++`git tag v2.8.1`
+ 
+-`git push origin v2.8.0`
++`git push origin v2.8.1`
+ 
+ The GitHub Actions release workflow validates the manifest and JavaScript,
+--- a/README.txt
++++ b/README.txt
+@@ -1,3 +1,3 @@
+-RPG Your Way Foundry Integrator 2.8.0
++RPG Your Way Foundry Integrator 2.8.1
+ 
+ Install and update this package through Foundry using the stable manifest URL:
