@@ -414,7 +414,7 @@ async function unmap(service, selector) {
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 2.8.0</h3>
+      <h3>RPG Your Way Foundry Integrator 2.8.1</h3>
       <p><strong>/aigm ACTION</strong> — send a live campaign turn to the RPG Your Way AIGM.</p>
       <p><strong>/rpgyw connect</strong> — GMs connect the world; Players use the same command as a shortcut to player linking.</p>
       <p><strong>/rpgyw link</strong> — link this Foundry user to your RPG Your Way account.</p>
