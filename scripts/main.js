@@ -14,6 +14,9 @@ import {
   initializeFoundryStateSync,
 } from "./state-sync.js";
 import {
+  initializeFoundryCombatHandoff,
+} from "./combat-handoff.js";
+import {
   MODULE_ID,
   registerSettings,
 } from "./settings.js";
@@ -37,13 +40,15 @@ Hooks.once("ready", async () => {
   const integrationService = initializeIntegrationService();
   const chatCommands = initializeChatCommands(integrationService);
   initializeFoundryStateSync(integrationService);
+  const combatHandoff = initializeFoundryCombatHandoff(integrationService);
 
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) {
     moduleRecord.api = Object.freeze({
-      version: "2.7.0",
+      version: "2.8.0",
       integration: integrationService,
       commands: chatCommands,
+      combatHandoff,
       controller: Object.freeze({
         status: getControllerStatus,
         claim: claimController,

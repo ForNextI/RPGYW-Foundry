@@ -12,6 +12,7 @@ export const FOUNDRY_API_PATHS = Object.freeze({
   playerLinkStatus: "/player-link/status",
   playerLink: "/player-link",
   aigmTurn: "/aigm-turn",
+  encounterNext: "/encounters/next",
   sessionOpen: "/session/open",
   sessionHeartbeat: "/session/heartbeat",
   sessionRoster: "/session/roster",
