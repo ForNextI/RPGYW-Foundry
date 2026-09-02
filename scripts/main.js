@@ -38,6 +38,7 @@ Hooks.once("ready", async () => {
 
   initializeController();
   const integrationService = initializeIntegrationService();
+  const restored = await integrationService.restoreSessions();
   const chatCommands = initializeChatCommands(integrationService);
   initializeFoundryStateSync(integrationService);
   const combatHandoff = initializeFoundryCombatHandoff(integrationService);
@@ -45,7 +46,7 @@ Hooks.once("ready", async () => {
   const moduleRecord = game.modules.get(MODULE_ID);
   if (moduleRecord) {
     moduleRecord.api = Object.freeze({
-      version: "2.12.0",
+      version: moduleRecord.version || "2.12.1",
       integration: integrationService,
       commands: chatCommands,
       combatHandoff,
@@ -57,5 +58,7 @@ Hooks.once("ready", async () => {
     });
   }
 
-  console.log(`${MODULE_ID} | ready`);
+  console.log(
+    `${MODULE_ID} | ready | controller session restored=${restored.controller} | player session restored=${restored.player}`,
+  );
 });

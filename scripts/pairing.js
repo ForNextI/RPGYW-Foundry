@@ -98,6 +98,11 @@ function normalizeStatusResponse(response) {
         response.sessionGrant,
         "sessionGrant",
       ),
+      deviceGrant: (
+        typeof response.deviceGrant === "string" && response.deviceGrant.trim()
+          ? response.deviceGrant.trim()
+          : null
+      ),
     });
   }
 
@@ -180,6 +185,7 @@ export function createPairingManager({
     stopPolling();
     pollInFlight = false;
     apiClient.clearSessionGrant();
+    apiClient.clearDeviceGrant?.();
 
     state = {
       state: PAIRING_STATES.idle,
@@ -240,6 +246,7 @@ export function createPairingManager({
   }) {
     stopPolling();
     apiClient.clearSessionGrant();
+    apiClient.clearDeviceGrant?.();
 
     const normalized = normalizeStartResponse({
       pairId,
@@ -296,6 +303,9 @@ export function createPairingManager({
 
       if (status.status === "approved") {
         apiClient.setSessionGrant(status.sessionGrant);
+        if (status.deviceGrant) {
+          apiClient.setDeviceGrant?.(status.deviceGrant);
+        }
         stopPolling();
 
         return replaceState({

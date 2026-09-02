@@ -13,6 +13,8 @@ export const SETTING_KEYS = Object.freeze({
   allowAIGMCombatAutomation: "allowAIGMCombatAutomation",
   linkedRpgYourWayReference: "linkedRpgYourWayReference",
   linkedPlayerReference: "linkedPlayerReference",
+  controllerDeviceGrant: "controllerDeviceGrant",
+  playerDeviceGrant: "playerDeviceGrant",
   defaultCharacterActorId: "defaultCharacterActorId",
   showIntegratorNotifications: "showIntegratorNotifications",
 });
@@ -50,6 +52,8 @@ export function registerSettings() {
 
   registerUserSetting(SETTING_KEYS.linkedRpgYourWayReference, String, "");
   registerUserSetting(SETTING_KEYS.linkedPlayerReference, String, "");
+  registerUserSetting(SETTING_KEYS.controllerDeviceGrant, String, "");
+  registerUserSetting(SETTING_KEYS.playerDeviceGrant, String, "");
   registerUserSetting(SETTING_KEYS.defaultCharacterActorId, String, "");
   registerUserSetting(SETTING_KEYS.showIntegratorNotifications, Boolean, true);
 }

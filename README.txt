@@ -1,4 +1,4 @@
-RPG Your Way Foundry Integrator 2.10.0
+RPG Your Way Foundry Integrator
 
 Install and update this package through Foundry using the stable manifest URL:
 

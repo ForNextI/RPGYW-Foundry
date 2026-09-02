@@ -8,6 +8,7 @@ export const FOUNDRY_API_PATHS = Object.freeze({
   pairStart: "/pair/start",
   pairStatus: "/pair/status",
   connection: "/connection",
+  sessionRefresh: "/session/refresh",
   playerLinkStart: "/player-link/start",
   playerLinkStatus: "/player-link/status",
   playerLink: "/player-link",
@@ -120,6 +121,7 @@ export function createIntegrationApiClient({
 
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   let sessionGrant = null;
+  let deviceGrant = null;
 
   function getSessionGrant() {
     return sessionGrant;
@@ -134,12 +136,26 @@ export function createIntegrationApiClient({
     sessionGrant = null;
   }
 
+  function getDeviceGrant() {
+    return deviceGrant;
+  }
+
+  function setDeviceGrant(grant) {
+    deviceGrant = requireNonEmptyString(grant, "deviceGrant");
+    return deviceGrant;
+  }
+
+  function clearDeviceGrant() {
+    deviceGrant = null;
+  }
+
   async function requestJson(
     path,
     {
       method = "GET",
       body = null,
       authenticated = false,
+      deviceAuthenticated = false,
       query = null,
       timeoutMs: requestTimeoutMs = timeoutMs,
     } = {},
@@ -172,6 +188,10 @@ export function createIntegrationApiClient({
       headers.set("Content-Type", "application/json");
     }
 
+    if (authenticated && deviceAuthenticated) {
+      throw new TypeError("A request cannot use both session and device authentication.");
+    }
+
     if (authenticated) {
       if (!sessionGrant) {
         throw new IntegrationApiError(
@@ -181,6 +201,15 @@ export function createIntegrationApiClient({
       }
 
       headers.set("Authorization", `Bearer ${sessionGrant}`);
+    } else if (deviceAuthenticated) {
+      if (!deviceGrant) {
+        throw new IntegrationApiError(
+          "No persistent integration device grant is available.",
+          { code: "missing-device-grant" },
+        );
+      }
+
+      headers.set("Authorization", `Bearer ${deviceGrant}`);
     }
 
     const effectiveTimeoutMs = (
@@ -227,6 +256,9 @@ export function createIntegrationApiClient({
       if (authenticated && response.status === 401) {
         clearSessionGrant();
       }
+      if (deviceAuthenticated && (response.status === 401 || response.status === 403)) {
+        clearDeviceGrant();
+      }
 
       throw new IntegrationApiError(
         `RPG Your Way integration API returned HTTP ${response.status}.`,
@@ -245,6 +277,33 @@ export function createIntegrationApiClient({
     }
 
     return responseBody;
+  }
+
+
+  async function refreshSession() {
+    const response = await requestJson(
+      FOUNDRY_API_PATHS.sessionRefresh,
+      {
+        method: "POST",
+        deviceAuthenticated: true,
+      },
+    );
+
+    if (!isPlainObject(response)) {
+      throw new IntegrationApiError(
+        "RPG Your Way returned an invalid session-refresh response.",
+        { code: "invalid-refresh-response", body: response },
+      );
+    }
+
+    setSessionGrant(
+      requireNonEmptyString(response.sessionGrant, "sessionGrant"),
+    );
+    setDeviceGrant(
+      requireNonEmptyString(response.deviceGrant, "deviceGrant"),
+    );
+
+    return response;
   }
 
   async function startPairing({
@@ -351,8 +410,12 @@ export function createIntegrationApiClient({
     startPlayerLink,
     getPlayerLinkStatus,
     getPlayerLink,
+    refreshSession,
     getSessionGrant,
     setSessionGrant,
     clearSessionGrant,
+    getDeviceGrant,
+    setDeviceGrant,
+    clearDeviceGrant,
   });
 }

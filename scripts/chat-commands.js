@@ -78,6 +78,10 @@ function notifyError(error) {
   console.error(`${MODULE_ID} |`, error);
 }
 
+function integratorVersion() {
+  return game.modules.get(MODULE_ID)?.version || "current";
+}
+
 function worldIsConnected() {
   return Boolean(
     game.settings.get(
@@ -167,6 +171,7 @@ async function announceConnected(service) {
     connection.campaignName,
   );
 
+  await service.persistControllerDeviceGrant();
   notifyInfo(`Connected to RPG Your Way: ${connection.campaignName}`);
 
   await privateMessage(`
@@ -189,6 +194,7 @@ async function announcePlayerLinked(service) {
     playerLink.linkId,
   );
 
+  await service.persistPlayerDeviceGrant();
   notifyInfo(`RPG Your Way account linked: ${playerLink.campaignName}`);
 
   await privateMessage(`
@@ -203,6 +209,11 @@ async function announcePlayerLinked(service) {
 }
 
 async function linkPlayer(service) {
+  if (service.getStatus().playerLink.hasSessionGrant) {
+    await status(service);
+    return;
+  }
+
   if (!worldIsConnected()) {
     throw new Error(
       "This Foundry world must be connected to RPG Your Way before players can link accounts.",
@@ -222,6 +233,11 @@ async function connect(service) {
 
   await ensureLocalController();
 
+  if (worldIsConnected() && service.getStatus().hasSessionGrant) {
+    await status(service);
+    return;
+  }
+
   const pairing = await service.beginPairing();
   await showWorldPairingCard(pairing);
   notifyInfo(`RPG Your Way connection code: ${pairing.userCode}`);
@@ -229,31 +245,50 @@ async function connect(service) {
 
 async function status(service) {
   const current = service.getStatus();
-  const worldConnected = worldIsConnected();
+  const worldPaired = worldIsConnected();
   let campaignName = linkedCampaignName();
   let playerLink = null;
 
-  if (current.playerLink.paired) {
-    playerLink = await service.getPlayerLink();
-    campaignName = campaignName || playerLink.campaignName;
+  if (current.hasSessionGrant) {
+    try {
+      const connection = await service.getConnection();
+      campaignName = connection.campaignName || campaignName;
+    } catch {
+      // The status text below reports the missing working session.
+    }
   }
 
-  const worldStatus = worldConnected
-    ? (
-      campaignName
-        ? `Connected to <strong>${escapeHtml(campaignName)}</strong>.`
-        : "Connected."
-    )
-    : "Not connected.";
+  if (current.playerLink.hasSessionGrant) {
+    try {
+      playerLink = await service.getPlayerLink();
+      campaignName = campaignName || playerLink.campaignName;
+    } catch {
+      // The status text below reports the missing working session.
+    }
+  }
+
+  const worldStatus = !worldPaired
+    ? "Not paired."
+    : current.hasSessionGrant
+      ? (
+        campaignName
+          ? `Paired to <strong>${escapeHtml(campaignName)}</strong>; controller session active.`
+          : "Paired; controller session active."
+      )
+      : (
+        campaignName
+          ? `Paired to <strong>${escapeHtml(campaignName)}</strong>; controller session currently unavailable.`
+          : "Paired; controller session currently unavailable."
+      );
 
   let accountStatus = "Not linked.";
 
   if (current.playerLink.pairing.state === "awaiting-approval") {
     accountStatus = "Waiting for approval.";
-  } else if (current.playerLink.paired && playerLink) {
-    accountStatus = `Linked to <strong>${escapeHtml(playerLink.campaignName)}</strong> with an active browser session.`;
+  } else if (current.playerLink.hasSessionGrant && playerLink) {
+    accountStatus = `Linked to <strong>${escapeHtml(playerLink.campaignName)}</strong>; player session active.`;
   } else if (linkedPlayerReference()) {
-    accountStatus = "Linked. This browser needs a fresh player session; use <strong>/rpgyw link</strong>.";
+    accountStatus = "Linked, but the working player session is unavailable. The Integrator normally restores it automatically; use <strong>/rpgyw link</strong> only to repair the link.";
   }
 
   await privateMessage(`
@@ -261,8 +296,9 @@ async function status(service) {
       <h3>RPG Your Way status</h3>
       <p>World: <strong>${worldStatus}</strong></p>
       <p>Your account: <strong>${accountStatus}</strong></p>
-      ${!worldConnected && game.user?.isGM ? '<p>Use <strong>/rpgyw connect</strong> to connect the world.</p>' : ""}
-      ${worldConnected && !current.playerLink.paired && !linkedPlayerReference() ? '<p>Use <strong>/rpgyw link</strong> to link this Foundry user to your RPG Your Way account.</p>' : ""}
+      ${!worldPaired && game.user?.isGM ? '<p>Use <strong>/rpgyw connect</strong> for first-time pairing or repair.</p>' : ""}
+      ${worldPaired && !current.hasSessionGrant && game.user?.isGM ? '<p>Automatic controller restore did not complete. Use <strong>/rpgyw connect</strong> only if the pairing needs repair.</p>' : ""}
+      ${worldPaired && !current.playerLink.hasSessionGrant && !linkedPlayerReference() ? '<p>Use <strong>/rpgyw link</strong> once to link this Foundry user to your RPG Your Way account.</p>' : ""}
     </div>
   `);
 }
@@ -270,6 +306,7 @@ async function status(service) {
 async function reset(service) {
   if (game.user?.isGM) {
     service.resetPairing();
+    await service.forgetControllerDeviceGrant();
 
     await game.settings.set(
       MODULE_ID,
@@ -292,13 +329,14 @@ async function reset(service) {
     await privateMessage(`
       <div class="rpg-your-way-status">
         <h3>RPG Your Way local world connection reset</h3>
-        <p>This browser discarded its controller session grant and marked the local world connection inactive. Use <strong>/rpgyw connect</strong> to pair again.</p>
+        <p>This Foundry user discarded its persistent controller credential and marked the local world connection inactive. The server-side pairing record is not mistaken for an online controller. Use <strong>/rpgyw connect</strong> to pair or repair again.</p>
       </div>
     `);
     return;
   }
 
   service.resetPlayerLink();
+  await service.forgetPlayerDeviceGrant();
 
   await game.settings.set(
     MODULE_ID,
@@ -309,7 +347,7 @@ async function reset(service) {
   await privateMessage(`
     <div class="rpg-your-way-status">
       <h3>RPG Your Way local player link reset</h3>
-      <p>This browser discarded its player session grant. Use <strong>/rpgyw link</strong> to link again.</p>
+      <p>This Foundry user discarded its persistent player credential. Use <strong>/rpgyw link</strong> to link again.</p>
     </div>
   `);
 }
@@ -414,16 +452,16 @@ async function unmap(service, selector) {
 async function help() {
   await privateMessage(`
     <div class="rpg-your-way-help">
-      <h3>RPG Your Way Foundry Integrator 2.10.0</h3>
+      <h3>RPG Your Way Foundry Integrator ${escapeHtml(integratorVersion())}</h3>
       <p><strong>/aigm ACTION</strong> — send a live campaign turn to the RPG Your Way AIGM while staying in Foundry.</p>
-      <p><strong>/rpgyw connect</strong> — GMs connect the world; Players use the same command as a shortcut to player linking.</p>
-      <p><strong>/rpgyw link</strong> — link this Foundry user to your RPG Your Way account.</p>
+      <p><strong>/rpgyw connect</strong> — first-time GM world pairing or repair. Normal restarts restore the working controller session automatically.</p>
+      <p><strong>/rpgyw link</strong> — first-time link or repair for this Foundry user. Normal restarts restore the working player session automatically.</p>
       <p><strong>/rpgyw roster</strong> — show RPG Your Way players, character assignments, and Foundry Actor mappings.</p>
       <p><strong>/rpgyw map NUMBER</strong> — map the selected Foundry token's Actor to a character from the roster.</p>
       <p><strong>/rpgyw unmap NUMBER</strong> — remove one character-to-Actor mapping.</p>
       <p><strong>/rpgyw probe</strong> — with exactly one token selected, run the server-to-Foundry movement probe.</p>
       <p><strong>/rpgyw status</strong> — show world connection and player-account status separately.</p>
-      <p><strong>/rpgyw reset</strong> — discard the current browser's applicable local grant.</p>
+      <p><strong>/rpgyw reset</strong> — forget this Foundry user's applicable persistent credential so pairing/linking can be repaired from scratch.</p>
       <p><strong>/rpgyw help</strong> — show these commands.</p>
     </div>
   `);

@@ -1,5 +1,6 @@
 import {
   createIntegrationApiClient,
+  FOUNDRY_API_PATHS,
 } from "./api-client.js";
 import {
   createPairingManager,
@@ -38,6 +39,22 @@ function getFoundryWorldLabel() {
   return game.world?.title ?? null;
 }
 
+function getUserSetting(key) {
+  return game.settings.get(MODULE_ID, key) || "";
+}
+
+async function setUserSetting(key, value) {
+  await game.settings.set(MODULE_ID, key, String(value || ""));
+}
+
+function currentUserIsConfiguredController() {
+  return Boolean(
+    game.user?.isGM
+      && game.settings.get(MODULE_ID, SETTING_KEYS.integratorEnabled)
+      && game.settings.get(MODULE_ID, SETTING_KEYS.controllerUserId) === game.user.id,
+  );
+}
+
 function buildPairingContext() {
   return Object.freeze({
     integratorWorldId: requireNonEmptyString(
@@ -59,6 +76,8 @@ function createPlayerPairingApi(apiClient) {
     getPairingStatus: (pairId) => apiClient.getPlayerLinkStatus(pairId),
     setSessionGrant: (grant) => apiClient.setSessionGrant(grant),
     clearSessionGrant: () => apiClient.clearSessionGrant(),
+    setDeviceGrant: (grant) => apiClient.setDeviceGrant(grant),
+    clearDeviceGrant: () => apiClient.clearDeviceGrant(),
   });
 }
 
@@ -76,10 +95,12 @@ function createRuntimeStatus(
     foundryUserReady: Boolean(getFoundryUserId()),
     paired: pairing.state === "paired",
     hasSessionGrant: Boolean(apiClient.getSessionGrant()),
+    hasDeviceGrant: Boolean(apiClient.getDeviceGrant()),
     pairing,
     playerLink: Object.freeze({
       paired: playerPairing.state === "paired",
       hasSessionGrant: Boolean(playerApiClient.getSessionGrant()),
+      hasDeviceGrant: Boolean(playerApiClient.getDeviceGrant()),
       pairing: playerPairing,
     }),
   });
@@ -140,7 +161,81 @@ export function createIntegrationService({
     });
   }
 
+  async function persistControllerDeviceGrant() {
+    const grant = apiClient.getDeviceGrant();
+    if (!grant) return false;
+    await setUserSetting(SETTING_KEYS.controllerDeviceGrant, grant);
+    return true;
+  }
+
+  async function persistPlayerDeviceGrant() {
+    const grant = playerApiClient.getDeviceGrant();
+    if (!grant) return false;
+    await setUserSetting(SETTING_KEYS.playerDeviceGrant, grant);
+    return true;
+  }
+
+  async function forgetControllerDeviceGrant() {
+    apiClient.clearSessionGrant();
+    apiClient.clearDeviceGrant();
+    await setUserSetting(SETTING_KEYS.controllerDeviceGrant, "");
+  }
+
+  async function forgetPlayerDeviceGrant() {
+    playerApiClient.clearSessionGrant();
+    playerApiClient.clearDeviceGrant();
+    await setUserSetting(SETTING_KEYS.playerDeviceGrant, "");
+  }
+
+  async function refreshStoredSession(client, settingKey) {
+    const stored = client.getDeviceGrant() || getUserSetting(settingKey);
+    if (!stored) return false;
+
+    if (!client.getDeviceGrant()) {
+      client.setDeviceGrant(stored);
+    }
+
+    try {
+      await client.refreshSession();
+      const rotated = client.getDeviceGrant();
+      if (rotated) {
+        await setUserSetting(settingKey, rotated);
+      }
+      return true;
+    } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        client.clearSessionGrant();
+        client.clearDeviceGrant();
+        await setUserSetting(settingKey, "");
+      }
+
+      console.warn(
+        `${MODULE_ID} | could not restore persistent session`,
+        error,
+      );
+      return false;
+    }
+  }
+
+  async function restoreSessions() {
+    const controller = currentUserIsConfiguredController()
+      ? await refreshStoredSession(
+          apiClient,
+          SETTING_KEYS.controllerDeviceGrant,
+        )
+      : false;
+
+    const player = await refreshStoredSession(
+      playerApiClient,
+      SETTING_KEYS.playerDeviceGrant,
+    );
+
+    notify();
+    return Object.freeze({ controller, player });
+  }
+
   async function beginPairing() {
+    await forgetControllerDeviceGrant();
     const result = await manager.beginPairing(
       buildPairingContext(),
     );
@@ -151,6 +246,7 @@ export function createIntegrationService({
   }
 
   async function beginPlayerLink() {
+    await forgetPlayerDeviceGrant();
     const result = await playerManager.beginPairing(
       buildPairingContext(),
     );
@@ -186,12 +282,18 @@ export function createIntegrationService({
 
   async function pollPairingOnce() {
     const result = await manager.pollOnce();
+    if (result.state === "paired") {
+      await persistControllerDeviceGrant();
+    }
     notify();
     return result;
   }
 
   async function pollPlayerLinkOnce() {
     const result = await playerManager.pollOnce();
+    if (result.state === "paired") {
+      await persistPlayerDeviceGrant();
+    }
     notify();
     return result;
   }
@@ -217,25 +319,57 @@ export function createIntegrationService({
   }
 
   async function requestAuthenticated(path, options = {}) {
-    return apiClient.requestJson(path, {
-      ...options,
-      authenticated: true,
-    });
+    try {
+      return await apiClient.requestJson(path, {
+        ...options,
+        authenticated: true,
+      });
+    } catch (error) {
+      if (
+        error?.status === 401
+          && await refreshStoredSession(
+            apiClient,
+            SETTING_KEYS.controllerDeviceGrant,
+          )
+      ) {
+        return apiClient.requestJson(path, {
+          ...options,
+          authenticated: true,
+        });
+      }
+      throw error;
+    }
   }
 
   async function requestPlayerAuthenticated(path, options = {}) {
-    return playerApiClient.requestJson(path, {
-      ...options,
-      authenticated: true,
-    });
+    try {
+      return await playerApiClient.requestJson(path, {
+        ...options,
+        authenticated: true,
+      });
+    } catch (error) {
+      if (
+        error?.status === 401
+          && await refreshStoredSession(
+            playerApiClient,
+            SETTING_KEYS.playerDeviceGrant,
+          )
+      ) {
+        return playerApiClient.requestJson(path, {
+          ...options,
+          authenticated: true,
+        });
+      }
+      throw error;
+    }
   }
 
   async function getConnection() {
-    return apiClient.getConnection();
+    return requestAuthenticated(FOUNDRY_API_PATHS.connection);
   }
 
   async function getPlayerLink() {
-    return playerApiClient.getPlayerLink();
+    return requestPlayerAuthenticated(FOUNDRY_API_PATHS.playerLink);
   }
 
   return Object.freeze({
@@ -251,6 +385,11 @@ export function createIntegrationService({
     stopPlayerLinkPolling,
     resetPairing,
     resetPlayerLink,
+    restoreSessions,
+    persistControllerDeviceGrant,
+    persistPlayerDeviceGrant,
+    forgetControllerDeviceGrant,
+    forgetPlayerDeviceGrant,
     requestAuthenticated,
     requestPlayerAuthenticated,
     getConnection,

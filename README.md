@@ -1,8 +1,18 @@
 # RPG Your Way Foundry Integrator
 
-Current release: **2.12.0**
+Current release: **2.12.1**
 
 The RPG Your Way Foundry Integrator connects a Foundry VTT world to an RPG Your Way cloud campaign. RPG Your Way remains the text-play surface, AIGM, campaign-memory, character/rules, multiplayer, and billing authority. Foundry provides the visual tabletop when the campaign needs one.
+
+## 2.12.1 persistent pairing and controller/player workflow
+
+2.12.1 separates durable pairing from short-lived working sessions so ordinary Foundry restarts do not require another connection/link ceremony.
+
+- A successful `/rpgyw connect` stores a persistent, revocable controller device grant for that Foundry user. Opening the paired World silently exchanges it for the short working session used by polling and combat handoff.
+- A successful `/rpgyw link` does the same for each human player's Foundry user. `/aigm` and other player-authenticated operations can restore their working session after restart.
+- Expired short sessions are renewed automatically. The persistent grant is rotated during renewal and is rejected if the server-side World connection or player link has been revoked or changed.
+- `/rpgyw connect` and `/rpgyw link` are now first-time setup/repair commands, not normal game-night startup steps.
+- `/rpgyw status` distinguishes durable pairing/linking from the current working session, and the help card reads the installed Integrator version dynamically instead of carrying a copied version string.
 
 ## 2.12.0 D&D 5.5e Modern character hydration
 
@@ -49,11 +59,11 @@ Foundry can use the same manifest URL to discover future releases.
 
 The GitHub repository is development source. A tagged release is the distributable Foundry package.
 
-For release `2.12.0`:
+For release `2.12.1`:
 
-`git tag v2.12.0`
+`git tag v2.12.1`
 
-`git push origin v2.12.0`
+`git push origin v2.12.1`
 
 The GitHub Actions release workflow validates the manifest and JavaScript, builds `rpg-your-way-integrator.zip`, and publishes both the ZIP and `module.json` to the GitHub Release.
 
