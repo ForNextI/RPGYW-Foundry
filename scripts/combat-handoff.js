@@ -26,6 +26,8 @@ import {
 import {
   hydrateModernCharacter,
 } from "./modern-hydration.js";
+import { createActorFromSrdTemplate } from "./srd-actors.js";
+import { combatBackgroundForSetup, redrawSetupWalls } from "./combat-backgrounds.js";
 
 const POLL_INTERVAL_MS = 2_500;
 const NAV_BUTTON_ID = "rpgyw-go-to-web";
@@ -33,6 +35,7 @@ const FALLBACK_ACTOR_IMAGE = "icons/svg/mystery-man.svg";
 const MANAGED_SCENE_FLAG = "managedCombatScene";
 const CHARACTER_FLAG = "campaignCharacterId";
 const ENEMY_FLAG = "managedEnemy";
+const BYSTANDER_FLAG = "managedBystander";
 const SOURCE_ENCOUNTER_FLAG = "sourceEncounterId";
 
 let handoffRuntime = null;
@@ -51,6 +54,10 @@ function dispositionFriendly() {
 
 function dispositionHostile() {
   return CONST?.TOKEN_DISPOSITIONS?.HOSTILE ?? -1;
+}
+
+function dispositionNeutral() {
+  return CONST?.TOKEN_DISPOSITIONS?.NEUTRAL ?? 0;
 }
 
 function ownershipNone() {
@@ -491,117 +498,24 @@ async function deleteManagedEnemyActors() {
   }
 }
 
-async function createEnemyActors(
-  encounterId,
-  enemies,
-  sceneSummary,
-  sceneSetup,
-) {
-  const nameCounts = new Map();
-
-  for (const enemy of enemies) {
-    const key = normalizeName(enemy.displayName);
-    nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
-  }
-
-  const nameOrdinals = new Map();
-  const actors = [];
-
-  for (const enemy of enemies) {
-    const key = normalizeName(enemy.displayName);
-    const ordinal = nameOrdinals.get(key) ?? 0;
-    nameOrdinals.set(key, ordinal + 1);
-
-    const donor = findEnemyImageDonor(enemy.displayName);
-    const visual = actorVisual(donor);
-    const monogram = enemyMonogram(
-      enemy.displayName,
-      ordinal,
-      nameCounts.get(key) ?? 1,
-    );
-    const plannedActor = findPlannedActor(
-      sceneSetup,
-      enemy.displayName,
-    );
-    const visualTags = plannedActor?.visual_tags ?? [];
-    const localTokenSrc = visual.tokenSrc
-      ? null
-      : await resolveLocalTokenImage({
-        name: enemy.displayName,
-        visualTags,
-        sceneSummary,
-      });
-    const compendiumTokenSrc = visual.tokenSrc || localTokenSrc
-      ? null
-      : await resolveCompendiumTokenImage({
-        name: enemy.displayName,
-        visualTags,
-        sceneSummary,
-      });
-    const tokenSrc = (
-      visual.tokenSrc
-        || localTokenSrc
-        || compendiumTokenSrc
-        || monogramDataUri(monogram)
-    );
-    const actorImg = visual.actorImg || FALLBACK_ACTOR_IMAGE;
-
-    let actor;
-
-    try {
-      actor = await Actor.create({
-        name: enemy.displayName,
-        type: "npc",
-        img: actorImg,
-        flags: {
-          [MODULE_ID]: {
-            [ENEMY_FLAG]: true,
-            [SOURCE_ENCOUNTER_FLAG]: encounterId,
-            combatantId: enemy.combatantId,
-          },
-        },
-        prototypeToken: enemyPrototypeToken(
-          enemy.displayName,
-          tokenSrc,
-        ),
-      });
-    } catch (error) {
-      if (!String(tokenSrc).startsWith("data:")) {
-        throw error;
-      }
-
-      actor = await Actor.create({
-        name: enemy.displayName,
-        type: "npc",
-        img: actorImg,
-        flags: {
-          [MODULE_ID]: {
-            [ENEMY_FLAG]: true,
-            [SOURCE_ENCOUNTER_FLAG]: encounterId,
-            combatantId: enemy.combatantId,
-          },
-        },
-        prototypeToken: enemyPrototypeToken(
-          enemy.displayName,
-          FALLBACK_ACTOR_IMAGE,
-        ),
-      });
-    }
-
-    if (!actor) {
-      throw new Error(
-        `Foundry could not create the RPG Your Way enemy Actor ${enemy.displayName}.`,
-      );
-    }
-
-    actors.push({
-      actor,
-      enemy,
-    });
-  }
-
-  return actors;
+async function fallbackNpcActor({ encounterId, entry, sceneSummary, sceneSetup, bystander = false }) {
+  const plannedActor = findPlannedActor(sceneSetup, entry.displayName);
+  const visualTags = entry.visualTags ?? plannedActor?.visual_tags ?? [];
+  const donor = findEnemyImageDonor(entry.displayName); const visual = actorVisual(donor);
+  const localTokenSrc = visual.tokenSrc ? null : await resolveLocalTokenImage({ name: entry.displayName, visualTags, sceneSummary });
+  const compendiumTokenSrc = visual.tokenSrc || localTokenSrc ? null : await resolveCompendiumTokenImage({ name: entry.displayName, visualTags, sceneSummary });
+  const tokenSrc = visual.tokenSrc || localTokenSrc || compendiumTokenSrc || monogramDataUri(characterMonogram(entry.displayName));
+  const neutral = bystander === true; const friendly = entry.side === "ally";
+  const flags = { [MODULE_ID]: { [ENEMY_FLAG]: !neutral, [BYSTANDER_FLAG]: neutral, [SOURCE_ENCOUNTER_FLAG]: encounterId, combatantId: entry.combatantId, srdTemplate: cleanString(entry.srdTemplate, "") } };
+  const native = await createActorFromSrdTemplate({ templateName: cleanString(entry.srdTemplate, entry.displayName), displayName: entry.displayName, flags, disposition: neutral ? dispositionNeutral() : friendly ? dispositionFriendly() : dispositionHostile(), displayNameMode: tokenDisplayAlways(), displayBarsMode: tokenDisplayHover() });
+  if (native) return native;
+  const prototypeToken = { ...enemyPrototypeToken(entry.displayName, tokenSrc), disposition: neutral ? dispositionNeutral() : friendly ? dispositionFriendly() : dispositionHostile(), bar1: { attribute: "attributes.hp" } };
+  const actorData = { name: entry.displayName, type: "npc", img: visual.actorImg || FALLBACK_ACTOR_IMAGE, flags, prototypeToken };
+  if (neutral) actorData.system = { attributes: { hp: { value: 10, max: 10, temp: 0 }, ac: { calc: "flat", flat: 10 } } };
+  try { return await Actor.create(actorData); } catch (error) { if (!String(tokenSrc).startsWith("data:")) throw error; actorData.prototypeToken.texture.src = FALLBACK_ACTOR_IMAGE; return Actor.create(actorData); }
 }
+async function createEnemyActors(encounterId,enemies,sceneSummary,sceneSetup) { const actors=[]; for (const enemy of enemies) { const actor=await fallbackNpcActor({encounterId,entry:enemy,sceneSummary,sceneSetup,bystander:false}); if(!actor) throw new Error(`Foundry could not create the RPG Your Way enemy Actor ${enemy.displayName}.`); actors.push({actor,enemy}); } return actors; }
+async function createBystanderActors(encounterId,bystanders,sceneSummary,sceneSetup) { const actors=[]; for (const bystander of bystanders ?? []) { const actor=await fallbackNpcActor({encounterId,entry:bystander,sceneSummary,sceneSetup,bystander:true}); if(!actor) throw new Error(`Foundry could not create the RPG Your Way bystander Actor ${bystander.displayName}.`); actors.push({actor,bystander}); } return actors; }
 
 function normalizeSetupPlan(value) {
   if (!plainObject(value) || value.enabled !== true) {
@@ -616,8 +530,8 @@ function normalizeSetupPlan(value) {
     );
   };
 
-  const widthFt = Math.max(20, snap(value.width_ft, 60, 300));
-  const heightFt = Math.max(20, snap(value.height_ft, 40, 300));
+  const widthFt = 200;
+  const heightFt = 200;
   const start = plainObject(value.player_start_area)
     ? value.player_start_area
     : {};
@@ -897,26 +811,12 @@ async function ensureManagedScene(encounter) {
   ) ?? null;
 
   const setup = normalizeSetupPlan(encounter.payload?.vttSetup);
-  const donor = findLocalSceneDonor(sceneSpec, scene?.id ?? null);
-  const localMap = donor
-    ? null
-    : await resolveLocalMapImage(
-      sceneSpec,
-      setup?.asset_search_terms ?? [],
-    );
-  const gridSize = donor
-    ? safeSceneNumber(donor.grid?.size, 100, 40, 300)
-    : 100;
-  const width = setup
-    ? Math.max(gridSize * 4, feetToPixels(setup.width_ft, gridSize))
-    : donor
-      ? safeSceneNumber(donor.width, 2400, 800, 12000)
-      : safeSceneNumber(localMap?.width, 2400, 800, 12000);
-  const height = setup
-    ? Math.max(gridSize * 4, feetToPixels(setup.height_ft, gridSize))
-    : donor
-      ? safeSceneNumber(donor.height, 1600, 800, 12000)
-      : safeSceneNumber(localMap?.height, 1600, 800, 12000);
+  const coreBackground = setup ? combatBackgroundForSetup(setup, sceneSpec) : null;
+  const donor = coreBackground ? null : findLocalSceneDonor(sceneSpec, scene?.id ?? null);
+  const localMap = coreBackground || donor ? null : await resolveLocalMapImage(sceneSpec, setup?.asset_search_terms ?? []);
+  const gridSize = setup ? 100 : donor ? safeSceneNumber(donor.grid?.size, 100, 40, 300) : 100;
+  const width = setup ? 4000 : donor ? safeSceneNumber(donor.width, 2400, 800, 12000) : safeSceneNumber(localMap?.width, 2400, 800, 12000);
+  const height = setup ? 4000 : donor ? safeSceneNumber(donor.height, 1600, 800, 12000) : safeSceneNumber(localMap?.height, 1600, 800, 12000);
   const label = cleanString(
     sceneSpec.label,
     "Combat",
@@ -925,7 +825,7 @@ async function ensureManagedScene(encounter) {
     name: `RPGYW Combat — ${label}`,
     width,
     height,
-    padding: 0.05,
+    padding: setup ? 0 : 0.05,
     navigation: true,
     tokenVision: false,
     environment: {
@@ -937,11 +837,7 @@ async function ensureManagedScene(encounter) {
       },
     },
     background: {
-      src: (
-        donor
-          ? safeImageSource(donor.background?.src)
-          : localMap?.src ?? null
-      ),
+      src: coreBackground || (donor ? safeImageSource(donor.background?.src) : localMap?.src ?? null),
     },
     grid: {
       type: squareGridType(),
@@ -954,8 +850,9 @@ async function ensureManagedScene(encounter) {
         [MANAGED_SCENE_FLAG]: true,
         [SOURCE_ENCOUNTER_FLAG]: encounter.id,
         localBackgroundSourceSceneId: donor?.id ?? null,
-        localBackgroundAsset: localMap?.src ?? null,
+        localBackgroundAsset: coreBackground || localMap?.src || null,
         setupEnvironment: setup?.environment ?? null,
+        combatCanvasFeet: setup ? 200 : null,
       },
     },
   };
@@ -979,6 +876,7 @@ async function ensureManagedScene(encounter) {
   }
 
   await redrawSetup(scene, setup);
+  await redrawSetupWalls(scene, setup);
 
   return {
     scene,
@@ -1026,6 +924,7 @@ function sceneTokenData(
     x,
     y,
     friendly,
+    neutral = false,
     hpBar,
   },
 ) {
@@ -1042,11 +941,9 @@ function sceneTokenData(
     actorLink: true,
     x,
     y,
-    width: 1,
-    height: 1,
-    disposition: friendly
-      ? dispositionFriendly()
-      : dispositionHostile(),
+    width: Math.max(0.5, cleanNumber(prototype?.width, 1) ?? 1),
+    height: Math.max(0.5, cleanNumber(prototype?.height, 1) ?? 1),
+    disposition: neutral ? dispositionNeutral() : friendly ? dispositionFriendly() : dispositionHostile(),
     displayName: tokenDisplayAlways(),
     displayBars: tokenDisplayHover(),
     bar1: {
@@ -1073,13 +970,14 @@ function normalizeEncounter(raw) {
   if (
     typeof raw.id !== "string"
       || !plainObject(raw.payload)
-      || (raw.payload.version !== 1 && raw.payload.version !== 2)
+      || (raw.payload.version !== 1 && raw.payload.version !== 2 && raw.payload.version !== 3)
       || !Array.isArray(raw.payload.party)
       || !Array.isArray(raw.payload.enemies)
   ) {
     throw new TypeError("RPG Your Way returned an incomplete VTT encounter.");
   }
 
+  if (!Array.isArray(raw.payload.bystanders)) raw.payload.bystanders = [];
   return raw;
 }
 
@@ -1187,95 +1085,14 @@ async function buildPlayerActors(
   return actors;
 }
 
-async function createSceneTokens(
-  scene,
-  playerActors,
-  enemyActors,
-  setup,
-) {
-  const gridSize = cleanNumber(scene.grid?.size, 100) ?? 100;
-  const width = cleanNumber(scene.width, 2400) ?? 2400;
-  const height = cleanNumber(scene.height, 1600) ?? 1600;
-  const entries = [];
-
-  playerActors.forEach((entry, index) => {
-    const position = playerSetupPosition(
-      index,
-      playerActors.length,
-      setup,
-      gridSize,
-      width,
-      height,
-    );
-
-    entries.push({
-      data: sceneTokenData(
-        entry.actor,
-        {
-          ...position,
-          friendly: true,
-          hpBar: true,
-        },
-      ),
-      initiative: cleanNumber(
-        entry.character.initiative,
-        null,
-      ),
-    });
-  });
-
-  enemyActors.forEach((entry, index) => {
-    const planned = findPlannedActor(
-      setup,
-      entry.enemy.displayName,
-    );
-    const position = setupPosition(
-      planned,
-      gridSize,
-      width,
-      height,
-    ) || formationPosition(
-      index,
-      enemyActors.length,
-      "right",
-      width,
-      height,
-      gridSize,
-    );
-
-    entries.push({
-      data: sceneTokenData(
-        entry.actor,
-        {
-          ...position,
-          friendly: false,
-          hpBar: false,
-        },
-      ),
-      initiative: cleanNumber(
-        entry.enemy.initiative,
-        null,
-      ),
-    });
-  });
-
-  if (entries.length === 0) {
-    throw new Error(
-      "The RPG Your Way encounter did not contain any combatants Foundry could place.",
-    );
-  }
-
-  const tokens = await scene.createEmbeddedDocuments(
-    "Token",
-    entries.map((entry) => entry.data),
-  );
-
-  return tokens.map(
-    (token, index) => ({
-      token,
-      initiative: entries[index]?.initiative ?? null,
-    }),
-  );
+async function createSceneTokens(scene, playerActors, enemyActors, bystanderActors, setup) {
+  const gridSize=cleanNumber(scene.grid?.size,100)??100, width=cleanNumber(scene.width,4000)??4000, height=cleanNumber(scene.height,4000)??4000; const entries=[];
+  playerActors.forEach((entry,index)=>{const position=playerSetupPosition(index,playerActors.length,setup,gridSize,width,height); entries.push({actorId:entry.actor.id,data:sceneTokenData(entry.actor,{...position,friendly:true,hpBar:true}),initiative:cleanNumber(entry.character.initiative,null)});});
+  enemyActors.forEach((entry,index)=>{const planned=findPlannedActor(setup,entry.enemy.displayName); const position=setupPosition(planned,gridSize,width,height)||formationPosition(index,enemyActors.length,"right",width,height,gridSize); entries.push({actorId:entry.actor.id,data:sceneTokenData(entry.actor,{...position,friendly:entry.enemy.side==="ally",hpBar:true}),initiative:cleanNumber(entry.enemy.initiative,null)});});
+  bystanderActors.forEach((entry,index)=>{const planned=findPlannedActor(setup,entry.bystander.displayName); const position=setupPosition(planned,gridSize,width,height)||formationPosition(index,bystanderActors.length,"right",width,height,gridSize); entries.push({actorId:entry.actor.id,data:sceneTokenData(entry.actor,{...position,friendly:false,neutral:true,hpBar:true}),initiative:cleanNumber(entry.bystander.initiative,5)});});
+  if(!entries.length) throw new Error("The RPG Your Way encounter did not contain any combatants Foundry could place.");
+  const tokens=await scene.createEmbeddedDocuments("Token",entries.map(e=>e.data)); const byActorId=new Map(entries.map(e=>[e.actorId,e]));
+  return tokens.map(token=>({token,initiative:byActorId.get(token.actorId||token.actor?.id||"")?.initiative??null}));
 }
 
 async function renderEncounter(service, rawEncounter) {
@@ -1300,19 +1117,9 @@ async function renderEncounter(service, rawEncounter) {
     roster,
     sceneSummary,
   );
-  const enemyActors = await createEnemyActors(
-    encounter.id,
-    encounter.payload.enemies,
-    sceneSummary,
-    setup,
-  );
-
-  const placements = await createSceneTokens(
-    scene,
-    playerActors,
-    enemyActors,
-    setup,
-  );
+  const enemyActors = await createEnemyActors(encounter.id, encounter.payload.enemies, sceneSummary, setup);
+  const bystanderActors = await createBystanderActors(encounter.id, encounter.payload.bystanders, sceneSummary, setup);
+  const placements = await createSceneTokens(scene, playerActors, enemyActors, bystanderActors, setup);
 
   await scene.activate({
     pullUsers: true,
@@ -1330,6 +1137,7 @@ async function renderEncounter(service, rawEncounter) {
     foundryCombatId: combat.id,
     playerCount: playerActors.length,
     enemyCount: enemyActors.length,
+    bystanderCount: bystanderActors.length,
   };
 }
 
@@ -1408,7 +1216,7 @@ async function pollOnce(runtime) {
       );
 
       ui.notifications.info(
-        `RPG Your Way setup ready: ${rendered.playerCount} player token${rendered.playerCount === 1 ? "" : "s"}, ${rendered.enemyCount} enemy token${rendered.enemyCount === 1 ? "" : "s"}, and initiative loaded. Position player characters, then use Begin Combat for round 1.`,
+        `RPG Your Way setup ready: ${rendered.playerCount} player token${rendered.playerCount === 1 ? "" : "s"}, ${rendered.enemyCount} active NPC token${rendered.enemyCount === 1 ? "" : "s"}, ${rendered.bystanderCount} bystander token${rendered.bystanderCount === 1 ? "" : "s"}, and initiative loaded. Position player characters, then use Begin Combat for round 1.`,
       );
 
       return rendered;

@@ -345,15 +345,23 @@ async function buildModernItems(mechanics) {
     spells: [],
     features: [],
   };
-  const seen = new Set();
+  const seen = new Map();
 
   const addMatch = (match, kind, name, options = {}) => {
     if (!match) return false;
-    const key = `${kind}:${normalizeName(name)}`;
-    if (seen.has(key)) return true;
-    seen.add(key);
-    items.push(prepareCompendiumItem(match, kind, options));
-    return true;
+    const key = `${match.pack}:${match.id}`;
+    const existing = seen.get(key);
+    if (existing) {
+      if (options.quantity && existing.system && Object.hasOwn(existing.system, "quantity")) existing.system.quantity = Math.max(finiteNumber(existing.system.quantity, 1), quantityValue(options.quantity));
+      if (options.equipped && existing.system && Object.hasOwn(existing.system, "equipped")) existing.system.equipped = true;
+      const moduleFlags = existing.flags?.[MODULE_ID] ?? {};
+      const sourceKinds = new Set([...(moduleFlags.sourceKinds ?? []), moduleFlags.sourceKind, kind].filter(Boolean));
+      existing.flags[MODULE_ID] = { ...moduleFlags, sourceKinds: [...sourceKinds] };
+      return true;
+    }
+    const prepared = prepareCompendiumItem(match, kind, options);
+    prepared.flags[MODULE_ID] = { ...(prepared.flags?.[MODULE_ID] ?? {}), sourceKinds: [kind] };
+    seen.set(key, prepared); items.push(prepared); return true;
   };
 
   for (const entry of mechanics.classes ?? []) {

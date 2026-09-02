@@ -49,11 +49,18 @@ jobs:
           mkdir release
           cp module.json README.md README.txt release/
           cp -R scripts release/
+          cp -R assets release/
           (
             cd release
             zip -r ../rpg-your-way-integrator.zip .
           )
           test -s rpg-your-way-integrator.zip
+          test "$(find release/assets/ready-to-play -type f -iname '*.webp' | wc -l)" -eq 48 || { echo "Expected 48 Ready-to-Play WebPs in the release archive." >&2; exit 1; }
+          for floor in rtp-combat-background-wood-floor.webp rtp-combat-background-street-cobbles.webp rtp-combat-background-field-wagon-road.webp rtp-combat-background-dungeon-stone.webp; do
+            test -s "release/assets/combat-backgrounds/$floor" || { echo "Missing combat background: $floor" >&2; exit 1; }
+          done
+          unzip -l rpg-your-way-integrator.zip | grep -q 'assets/ready-to-play/' || exit 1
+          unzip -l rpg-your-way-integrator.zip | grep -q 'assets/combat-backgrounds/rtp-combat-background-wood-floor.webp' || exit 1
 
       - name: Publish GitHub Release assets
         env:
