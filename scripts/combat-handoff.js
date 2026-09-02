@@ -643,10 +643,26 @@ function playerSetupPosition(
   };
 }
 
+function drawingRectangleType() {
+  return (
+    foundry?.canvas?.placeables?.Drawing?.SHAPE_TYPES?.RECTANGLE
+      ?? foundry?.data?.ShapeData?.TYPES?.RECTANGLE
+      ?? null
+  );
+}
+
 function setupDrawingData(setup, scene) {
   if (!setup) return [];
 
   const gridSize = cleanNumber(scene.grid?.size, 100) ?? 100;
+  const rectangleType = drawingRectangleType();
+
+  if (!rectangleType) {
+    console.warn(
+      `${MODULE_ID} | Foundry rectangle Drawing type unavailable; skipping architectural Drawings.`,
+    );
+    return [];
+  }
   const outline = {
     label: setup.environment || "Combat area",
     kind: "room",
@@ -664,7 +680,7 @@ function setupDrawingData(setup, scene) {
     x: feetToPixels(feature.x_ft, gridSize),
     y: feetToPixels(feature.y_ft, gridSize),
     shape: {
-      type: "rectangle",
+      type: rectangleType,
       x: 0,
       y: 0,
       width: Math.max(
@@ -875,8 +891,23 @@ async function ensureManagedScene(encounter) {
     await scene.deleteEmbeddedDocuments("Token", tokenIds);
   }
 
-  await redrawSetup(scene, setup);
-  await redrawSetupWalls(scene, setup);
+  try {
+    await redrawSetupWalls(scene, setup);
+  } catch (error) {
+    console.warn(
+      `${MODULE_ID} | architectural Foundry walls could not be created; continuing encounter render`,
+      error,
+    );
+  }
+
+  try {
+    await redrawSetup(scene, setup);
+  } catch (error) {
+    console.warn(
+      `${MODULE_ID} | architectural Drawings could not be created; continuing encounter render`,
+      error,
+    );
+  }
 
   return {
     scene,
