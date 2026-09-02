@@ -23,6 +23,9 @@ import {
   resolveLocalMapImage,
   resolveLocalTokenImage,
 } from "./local-assets.js";
+import {
+  hydrateModernCharacter,
+} from "./modern-hydration.js";
 
 const POLL_INTERVAL_MS = 2_500;
 const NAV_BUTTON_ID = "rpgyw-go-to-web";
@@ -97,6 +100,20 @@ function safeImageSource(value) {
   return typeof value === "string" && value.trim()
     ? value.trim()
     : null;
+}
+
+function realVisualSource(value) {
+  const src = safeImageSource(value);
+  if (!src) return null;
+  if (src === FALLBACK_ACTOR_IMAGE) return null;
+  if (src.startsWith("data:image/svg+xml")) return null;
+  return src;
+}
+
+function preferredReadyToPlayAsset(value) {
+  const src = safeImageSource(value);
+  const prefix = `modules/${MODULE_ID}/assets/ready-to-play/`;
+  return src?.startsWith(prefix) ? src : null;
 }
 
 function currentFoundryLaunchUrl() {
@@ -220,12 +237,12 @@ function actorVisual(actor) {
 
   return Object.freeze({
     tokenSrc: (
-      safeImageSource(actor.prototypeToken?.texture?.src)
-        || safeImageSource(actor.img)
+      realVisualSource(actor.prototypeToken?.texture?.src)
+        || realVisualSource(actor.img)
     ),
     actorImg: (
-      safeImageSource(actor.img)
-        || safeImageSource(actor.prototypeToken?.texture?.src)
+      realVisualSource(actor.img)
+        || realVisualSource(actor.prototypeToken?.texture?.src)
     ),
   });
 }
@@ -325,19 +342,31 @@ async function ensurePlayerActor(
   let actor = findPlayerProxy(character.campaignCharacterId);
   const donor = oldMappedDonor(character, actor);
   const donorVisual = actorVisual(donor);
-  const localTokenSrc = donorVisual.tokenSrc
+  const preferredTokenSrc = preferredReadyToPlayAsset(
+    encounterCharacter.preferredTokenAsset,
+  );
+  const localTokenSrc = preferredTokenSrc || donorVisual.tokenSrc
     ? null
     : await resolveLocalTokenImage({
       name: encounterCharacter.displayName,
       visualTags: encounterCharacter.visualTags ?? [],
       sceneSummary,
     });
+  const compendiumTokenSrc = preferredTokenSrc || donorVisual.tokenSrc || localTokenSrc
+    ? null
+    : await resolveCompendiumTokenImage({
+      name: encounterCharacter.displayName,
+      visualTags: encounterCharacter.visualTags ?? [],
+      sceneSummary,
+    });
   const tokenSrc = (
-    donorVisual.tokenSrc
+    preferredTokenSrc
+      || donorVisual.tokenSrc
       || localTokenSrc
+      || compendiumTokenSrc
       || monogramDataUri(characterMonogram(encounterCharacter.displayName))
   );
-  const actorImg = donorVisual.actorImg || FALLBACK_ACTOR_IMAGE;
+  const actorImg = donorVisual.actorImg || preferredTokenSrc || FALLBACK_ACTOR_IMAGE;
   const ownership = ownershipForCharacter(character, roster);
   const prototypeToken = playerPrototypeToken(
     encounterCharacter.displayName,
@@ -427,6 +456,8 @@ async function ensurePlayerActor(
       },
     });
   }
+
+  await hydrateModernCharacter(actor, encounterCharacter);
 
   return actor;
 }
@@ -1042,7 +1073,7 @@ function normalizeEncounter(raw) {
   if (
     typeof raw.id !== "string"
       || !plainObject(raw.payload)
-      || raw.payload.version !== 1
+      || (raw.payload.version !== 1 && raw.payload.version !== 2)
       || !Array.isArray(raw.payload.party)
       || !Array.isArray(raw.payload.enemies)
   ) {
